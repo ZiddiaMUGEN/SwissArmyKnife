@@ -1,0 +1,125 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--Project was exported from assembly: C:\Users\ziddi\Downloads\Swiss Army Knife 1.1 Conversion\Swiss Army Knife 1.1 Conversion\SAKnifeWM.exe-->
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{5D34859C-7941-4C60-8032-0E17842C9DBC}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>SAKnifeWM</AssemblyName>
+    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+    <ApplicationVersion>1.0.8.0</ApplicationVersion>
+    <FileAlignment>512</FileAlignment>
+    <FileUpgradeFlags>
+    </FileUpgradeFlags>
+    <UpgradeBackupLocation>
+    </UpgradeBackupLocation>
+    <OldToolsVersion>3.5</OldToolsVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="DebuggingDLL">
+      <HintPath>.\DebuggingDLL.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="SwissArmyKnifeForMugen\BackgroundForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SwissArmyKnifeForMugen\BufferedListView.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="SwissArmyKnifeForMugen\DebugForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SwissArmyKnifeForMugen\MainForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SwissArmyKnifeForMugen\Mugen11B1DB.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Mugen11A4DB.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\TriggerCheckTarget.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\TriggerDatabase.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\MugenAddrDatabase.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Mugen10DB.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\QuickVSModePanel.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SwissArmyKnifeForMugen\ResumeConfirmForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SwissArmyKnifeForMugen\NavigatorForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SwissArmyKnifeForMugen\VarForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SwissArmyKnifeForMugen\WelcomeForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SwissArmyKnifeForMugen\ProfileConfigPanel.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SwissArmyKnifeForMugen\MainConfigPanel.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SwissArmyKnifeForMugen\TimedMessageBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SwissArmyKnifeForMugen\GameLogger.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\ProfileManager.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\ProfileBase.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\TriggerCheckProfile.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\QuickVSProfile.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\MugenProfile.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\MainConfig.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\MugenWindow.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SwissArmyKnifeForMugen\LogManager.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SwissArmyKnifeForMugen\Program.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Properties\Resources.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Properties\Settings.cs" />
+    <Compile Include="AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\BackgroundForm.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\DebugForm.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\LogManager.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\MainConfigPanel.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\MainForm.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\MugenWindow.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\NavigatorForm.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\ProfileConfigPanel.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\Properties\Resources.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\QuickVSModePanel.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\ResumeConfirmForm.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\TimedMessageBox.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\VarForm.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\WelcomeForm.resx" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
