@@ -10,23 +10,26 @@ using System.Windows.Forms;
 
 namespace SwissArmyKnifeForMugen
 {
-  internal static class Program
-  {
-    [STAThread]
-    private static void Main()
+    /// <summary>
+    /// Entry point, just locks the instance (to avoid doubling up) and runs the <c>MainForm</c>.
+    /// </summary>
+    internal static class Program
     {
-      Mutex mutex = new Mutex(true, "SwissArmyKnifeForMugen");
-      if (mutex != null && mutex.WaitOne(100))
-      {
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run((Form) MainForm.MainObj());
-        mutex.ReleaseMutex();
-      }
-      else
-      {
-        int num = (int) MessageBox.Show("Running two instances is not supported.", "Swiss Army Knife");
-      }
+        [STAThread]
+        private static void Main()
+        {
+            Mutex mutex = new Mutex(true, "SwissArmyKnifeForMugen");
+            if (mutex != null && mutex.WaitOne(100))
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                Application.Run((Form)MainForm.MainObj());
+                mutex.ReleaseMutex();
+            }
+            else
+            {
+                int num = (int)MessageBox.Show("Running two instances is not supported.", "Swiss Army Knife");
+            }
+        }
     }
-  }
 }

@@ -5,7 +5,11 @@
 // Assembly location: C:\Users\ziddi\Downloads\Swiss Army Knife 1.1 Conversion\Swiss Army Knife 1.1 Conversion\SAKnifeWM.exe
 
 using Microsoft.Samples.Debugging.Native;
+using SwissArmyKnifeForMugen.Configs;
+using SwissArmyKnifeForMugen.Databases;
+using SwissArmyKnifeForMugen.Displays;
 using SwissArmyKnifeForMugen.Properties;
+using SwissArmyKnifeForMugen.Triggers;
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -15,6 +19,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using static SwissArmyKnifeForMugen.Triggers.TriggerDatabase;
 
 namespace SwissArmyKnifeForMugen
 {
@@ -857,26 +862,26 @@ namespace SwissArmyKnifeForMugen
                                    }
                                    MugenWindow.EnumChildWindows(hWnd, (MugenWindow.EnumChildProc)((hWnd2, lParam2) =>
                          {
-                               StringBuilder lParam1 = new StringBuilder(4132);
-                               MugenWindow.SendMessageText(hWnd2, 13U, lParam1.Capacity, lParam1);
-                               string str = lParam1.ToString();
-                               if (str != null && str != "" && !str.Contains("OK"))
-                               {
-                                   string msg = str.Replace("\n", "\r\n");
-                                   if (LogManager.MainObj() != null)
-                                   {
-                                       LogManager.MainObj().append(msg);
-                                       LogManager.MainObj().append(Environment.NewLine + "--------------------" + Environment.NewLine);
-                                       this.DumpPlayers();
-                                       if (profile != null && profile.IsAutoMode())
-                                       {
-                                           TimedMessageBox.DummyShow(1000);
-                                           this.CloseMugen();
-                                       }
-                                   }
-                               }
-                               return true;
-                           }), IntPtr.Zero);
+                             StringBuilder lParam1 = new StringBuilder(4132);
+                             MugenWindow.SendMessageText(hWnd2, 13U, lParam1.Capacity, lParam1);
+                             string str = lParam1.ToString();
+                             if (str != null && str != "" && !str.Contains("OK"))
+                             {
+                                 string msg = str.Replace("\n", "\r\n");
+                                 if (LogManager.MainObj() != null)
+                                 {
+                                     LogManager.MainObj().append(msg);
+                                     LogManager.MainObj().append(Environment.NewLine + "--------------------" + Environment.NewLine);
+                                     this.DumpPlayers();
+                                     if (profile != null && profile.IsAutoMode())
+                                     {
+                                         TimedMessageBox.DummyShow(1000);
+                                         this.CloseMugen();
+                                     }
+                                 }
+                             }
+                             return true;
+                         }), IntPtr.Zero);
                                }
                            }
                        }
@@ -1769,7 +1774,7 @@ namespace SwissArmyKnifeForMugen
         private void SetDebugColorEX(uint baseAddr, DebugColor debugColor)
         {
             // iterate all the new debug color offsets
-            foreach(uint colorBase in this._addr_db.NEW_DEBUG_COLOR_OFFSETS)
+            foreach (uint colorBase in this._addr_db.NEW_DEBUG_COLOR_OFFSETS)
             {
                 this.ApplyDebugColorInt(baseAddr, colorBase, debugColor);
             }
@@ -2401,7 +2406,7 @@ namespace SwissArmyKnifeForMugen
             if (num == 0U)
                 return (TriggerDatabase.TriggerValue_t)null;
             TriggerCheckTarget.Trigger_t targetTrigger = this._triggerCheckTarget.GetTargetTrigger();
-            int triggerType = (int)targetTrigger.triggerType;
+            TriggerId triggerType = targetTrigger.triggerType;
             if (!TriggerDatabase.IsTriggerAvailable(triggerType))
                 return (TriggerDatabase.TriggerValue_t)null;
             uint addr;
@@ -2418,7 +2423,7 @@ namespace SwissArmyKnifeForMugen
                     break;
             }
             TriggerDatabase.TriggerValue_t triggerValueT = new TriggerDatabase.TriggerValue_t();
-            switch (TriggerDatabase.TriggerType[triggerType])
+            switch (TriggerDatabase.GetTriggerValueType(triggerType))
             {
                 case TriggerDatabase.ValueType.VALUE_NONE:
                     triggerValueT.valueType = TriggerDatabase.ValueType.VALUE_NONE;
@@ -2479,7 +2484,7 @@ namespace SwissArmyKnifeForMugen
             if (num == 0U)
                 return false;
             TriggerCheckTarget.Trigger_t targetTrigger = this._triggerCheckTarget.GetTargetTrigger();
-            int triggerType = (int)targetTrigger.triggerType;
+            TriggerId triggerType = targetTrigger.triggerType;
             if (!TriggerDatabase.IsTriggerAvailable(triggerType))
                 return false;
             uint targetAdder;
@@ -4536,6 +4541,9 @@ namespace SwissArmyKnifeForMugen
             P4,
         }
 
+        /// <summary>
+        /// Enum representing different options for Debug text colors.
+        /// </summary>
         public enum DebugColor
         {
             NONE = -1,

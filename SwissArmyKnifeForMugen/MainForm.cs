@@ -4,6 +4,8 @@
 // MVID: 09478AD8-365C-4BF3-BEA1-B5785151259B
 // Assembly location: C:\Users\ziddi\Downloads\Swiss Army Knife 1.1 Conversion\Swiss Army Knife 1.1 Conversion\SAKnifeWM.exe
 
+using SwissArmyKnifeForMugen.Configs;
+using SwissArmyKnifeForMugen.Displays;
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -15,7 +17,7 @@ using System.Windows.Forms;
 
 namespace SwissArmyKnifeForMugen
 {
-  public class MainForm : Form
+    public class MainForm : Form
   {
     private IContainer components;
     private MenuStrip fileMenuStrip;

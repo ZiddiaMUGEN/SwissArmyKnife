@@ -45,59 +45,59 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="SwissArmyKnifeForMugen\BackgroundForm.cs">
+    <Compile Include="SwissArmyKnifeForMugen\Displays\BackgroundForm.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="SwissArmyKnifeForMugen\BufferedListView.cs">
+    <Compile Include="SwissArmyKnifeForMugen\Utils\BufferedListView.cs">
       <SubType>Component</SubType>
     </Compile>
-    <Compile Include="SwissArmyKnifeForMugen\DebugForm.cs">
+    <Compile Include="SwissArmyKnifeForMugen\Displays\DebugForm.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="SwissArmyKnifeForMugen\MainForm.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="SwissArmyKnifeForMugen\Mugen11B1DB.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\Mugen11A4DB.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\TriggerCheckTarget.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\TriggerDatabase.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\MugenAddrDatabase.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\Mugen10DB.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\QuickVSModePanel.cs">
+    <Compile Include="SwissArmyKnifeForMugen\Databases\Mugen11B1DB.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Databases\Mugen11A4DB.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Triggers\TriggerCheckTarget.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Triggers\TriggerDatabase.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Databases\MugenAddrDatabase.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Databases\Mugen10DB.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Displays\QuickVSModePanel.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="SwissArmyKnifeForMugen\ResumeConfirmForm.cs">
+    <Compile Include="SwissArmyKnifeForMugen\Displays\ResumeConfirmForm.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="SwissArmyKnifeForMugen\NavigatorForm.cs">
+    <Compile Include="SwissArmyKnifeForMugen\Displays\NavigatorForm.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="SwissArmyKnifeForMugen\VarForm.cs">
+    <Compile Include="SwissArmyKnifeForMugen\Displays\VarForm.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="SwissArmyKnifeForMugen\WelcomeForm.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="SwissArmyKnifeForMugen\ProfileConfigPanel.cs">
+    <Compile Include="SwissArmyKnifeForMugen\Displays\ProfileConfigPanel.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="SwissArmyKnifeForMugen\MainConfigPanel.cs">
+    <Compile Include="SwissArmyKnifeForMugen\Displays\MainConfigPanel.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="SwissArmyKnifeForMugen\TimedMessageBox.cs">
+    <Compile Include="SwissArmyKnifeForMugen\Displays\TimedMessageBox.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="SwissArmyKnifeForMugen\GameLogger.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\ProfileManager.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\ProfileBase.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\TriggerCheckProfile.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\QuickVSProfile.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\MugenProfile.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\MainConfig.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Configs\GameLogger.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Configs\ProfileManager.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Configs\ProfileBase.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Triggers\TriggerCheckProfile.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Configs\QuickVSProfile.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Configs\MugenProfile.cs" />
+    <Compile Include="SwissArmyKnifeForMugen\Configs\MainConfig.cs" />
     <Compile Include="SwissArmyKnifeForMugen\MugenWindow.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="SwissArmyKnifeForMugen\LogManager.cs">
+    <Compile Include="SwissArmyKnifeForMugen\Displays\LogManager.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="SwissArmyKnifeForMugen\Program.cs" />
@@ -106,19 +106,19 @@
     <Compile Include="AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="SwissArmyKnifeForMugen\BackgroundForm.resx" />
-    <EmbeddedResource Include="SwissArmyKnifeForMugen\DebugForm.resx" />
-    <EmbeddedResource Include="SwissArmyKnifeForMugen\LogManager.resx" />
-    <EmbeddedResource Include="SwissArmyKnifeForMugen\MainConfigPanel.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\BackgroundForm.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\DebugForm.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\LogManager.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\MainConfigPanel.resx" />
     <EmbeddedResource Include="SwissArmyKnifeForMugen\MainForm.resx" />
     <EmbeddedResource Include="SwissArmyKnifeForMugen\MugenWindow.resx" />
-    <EmbeddedResource Include="SwissArmyKnifeForMugen\NavigatorForm.resx" />
-    <EmbeddedResource Include="SwissArmyKnifeForMugen\ProfileConfigPanel.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\NavigatorForm.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\ProfileConfigPanel.resx" />
     <EmbeddedResource Include="SwissArmyKnifeForMugen\Properties\Resources.resx" />
-    <EmbeddedResource Include="SwissArmyKnifeForMugen\QuickVSModePanel.resx" />
-    <EmbeddedResource Include="SwissArmyKnifeForMugen\ResumeConfirmForm.resx" />
-    <EmbeddedResource Include="SwissArmyKnifeForMugen\TimedMessageBox.resx" />
-    <EmbeddedResource Include="SwissArmyKnifeForMugen\VarForm.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\QuickVSModePanel.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\ResumeConfirmForm.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\TimedMessageBox.resx" />
+    <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\VarForm.resx" />
     <EmbeddedResource Include="SwissArmyKnifeForMugen\WelcomeForm.resx" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

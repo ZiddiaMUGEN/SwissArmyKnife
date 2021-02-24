@@ -4,6 +4,9 @@
 // MVID: 09478AD8-365C-4BF3-BEA1-B5785151259B
 // Assembly location: C:\Users\ziddi\Downloads\Swiss Army Knife 1.1 Conversion\Swiss Army Knife 1.1 Conversion\SAKnifeWM.exe
 
+using SwissArmyKnifeForMugen.Configs;
+using SwissArmyKnifeForMugen.Triggers;
+using SwissArmyKnifeForMugen.Utils;
 using System;
 using System.ComponentModel;
 using System.Drawing;
@@ -11,8 +14,9 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using static SwissArmyKnifeForMugen.MugenWindow;
+using static SwissArmyKnifeForMugen.Triggers.TriggerDatabase;
 
-namespace SwissArmyKnifeForMugen
+namespace SwissArmyKnifeForMugen.Displays
 {
     public class DebugForm : Form
     {
@@ -1707,7 +1711,7 @@ namespace SwissArmyKnifeForMugen
             }
             else
             {
-                switch(debugColorList.SelectedItem)
+                switch (debugColorList.SelectedItem)
                 {
                     case "White":
                         MugenWindow.MainObj().SetDebugColor(DebugColor.WHITE);
@@ -2642,7 +2646,7 @@ namespace SwissArmyKnifeForMugen
                     if (this.valueComboBox.Text != null && this.valueComboBox.Text != "" && this.valueComboBox.Text != "(Unspecified)")
                     {
                         string input = this.valueComboBox.Text.ToLower().Trim();
-                        int triggerType = (int)trigger.triggerType;
+                        TriggerId triggerType = trigger.triggerType;
                         if (!TriggerDatabase.IsTriggerAvailable(triggerType))
                         {
                             int num = (int)MessageBox.Show("There's an error in the specified values.", "Swiss Army Knife");
@@ -2655,7 +2659,7 @@ namespace SwissArmyKnifeForMugen
                         if (triggerValueT1.valueType == TriggerDatabase.ValueType.VALUE_NONE)
                         {
                             string s = Regex.Replace(input, "\\=\\s*(\\-?[0-9\\.]+)", "$1");
-                            if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_INT)
+                            if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_INT)
                             {
                                 int result;
                                 if (int.TryParse(s, out result))
@@ -2668,7 +2672,7 @@ namespace SwissArmyKnifeForMugen
                             else
                             {
                                 float result;
-                                if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s, out result))
+                                if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s, out result))
                                 {
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_EQ);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;
@@ -2679,7 +2683,7 @@ namespace SwissArmyKnifeForMugen
                         if (triggerValueT1.valueType == TriggerDatabase.ValueType.VALUE_NONE)
                         {
                             string s = Regex.Replace(input, "\\!\\=\\s*(\\-?[0-9\\.]+)", "$1");
-                            if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_INT)
+                            if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_INT)
                             {
                                 int result;
                                 if (int.TryParse(s, out result))
@@ -2692,7 +2696,7 @@ namespace SwissArmyKnifeForMugen
                             else
                             {
                                 float result;
-                                if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s, out result))
+                                if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s, out result))
                                 {
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;
@@ -2703,7 +2707,7 @@ namespace SwissArmyKnifeForMugen
                         if (triggerValueT1.valueType == TriggerDatabase.ValueType.VALUE_NONE)
                         {
                             string s = Regex.Replace(input, "\\<\\s*(\\-?[0-9\\.]+)", "$1");
-                            if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_INT)
+                            if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_INT)
                             {
                                 int result;
                                 if (int.TryParse(s, out result))
@@ -2716,7 +2720,7 @@ namespace SwissArmyKnifeForMugen
                             else
                             {
                                 float result;
-                                if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s, out result))
+                                if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s, out result))
                                 {
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_LT);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;
@@ -2727,7 +2731,7 @@ namespace SwissArmyKnifeForMugen
                         if (triggerValueT1.valueType == TriggerDatabase.ValueType.VALUE_NONE)
                         {
                             string s = Regex.Replace(input, "\\<\\=\\s*(\\-?[0-9\\.]+)", "$1");
-                            if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_INT)
+                            if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_INT)
                             {
                                 int result;
                                 if (int.TryParse(s, out result))
@@ -2740,7 +2744,7 @@ namespace SwissArmyKnifeForMugen
                             else
                             {
                                 float result;
-                                if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s, out result))
+                                if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s, out result))
                                 {
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_LE);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;
@@ -2751,7 +2755,7 @@ namespace SwissArmyKnifeForMugen
                         if (triggerValueT1.valueType == TriggerDatabase.ValueType.VALUE_NONE)
                         {
                             string s = Regex.Replace(input, "\\>\\s*(\\-?[0-9\\.]+)", "$1");
-                            if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_INT)
+                            if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_INT)
                             {
                                 int result;
                                 if (int.TryParse(s, out result))
@@ -2764,7 +2768,7 @@ namespace SwissArmyKnifeForMugen
                             else
                             {
                                 float result;
-                                if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s, out result))
+                                if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s, out result))
                                 {
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_GT);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;
@@ -2775,7 +2779,7 @@ namespace SwissArmyKnifeForMugen
                         if (triggerValueT1.valueType == TriggerDatabase.ValueType.VALUE_NONE)
                         {
                             string s = Regex.Replace(input, "\\>\\=\\s*(\\-?[0-9\\.]+)", "$1");
-                            if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_INT)
+                            if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_INT)
                             {
                                 int result;
                                 if (int.TryParse(s, out result))
@@ -2788,7 +2792,7 @@ namespace SwissArmyKnifeForMugen
                             else
                             {
                                 float result;
-                                if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s, out result))
+                                if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s, out result))
                                 {
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_GE);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;
@@ -2800,7 +2804,7 @@ namespace SwissArmyKnifeForMugen
                         {
                             string s1 = Regex.Replace(input, "\\=\\s*\\[\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\]\\s*", "$1");
                             string s2 = Regex.Replace(input, "\\=\\s*\\[\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\]\\s*", "$2");
-                            if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_INT)
+                            if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_INT)
                             {
                                 int result1;
                                 int result2;
@@ -2817,7 +2821,7 @@ namespace SwissArmyKnifeForMugen
                             {
                                 float result1;
                                 float result2;
-                                if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
+                                if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
                                 {
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_FROM_TO);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;
@@ -2831,7 +2835,7 @@ namespace SwissArmyKnifeForMugen
                         {
                             string s1 = Regex.Replace(input, "\\=\\s*\\(\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\]\\s*", "$1");
                             string s2 = Regex.Replace(input, "\\=\\s*\\(\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\]\\s*", "$2");
-                            if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_INT)
+                            if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_INT)
                             {
                                 int result1;
                                 int result2;
@@ -2848,7 +2852,7 @@ namespace SwissArmyKnifeForMugen
                             {
                                 float result1;
                                 float result2;
-                                if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
+                                if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
                                 {
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_L_FROM_TO);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;
@@ -2862,7 +2866,7 @@ namespace SwissArmyKnifeForMugen
                         {
                             string s1 = Regex.Replace(input, "\\=\\s*\\[\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\)\\s*", "$1");
                             string s2 = Regex.Replace(input, "\\=\\s*\\[\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\)\\s*", "$2");
-                            if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_INT)
+                            if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_INT)
                             {
                                 int result1;
                                 int result2;
@@ -2879,7 +2883,7 @@ namespace SwissArmyKnifeForMugen
                             {
                                 float result1;
                                 float result2;
-                                if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
+                                if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
                                 {
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_G_FROM_TO);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;
@@ -2893,7 +2897,7 @@ namespace SwissArmyKnifeForMugen
                         {
                             string s1 = Regex.Replace(input, "\\=\\s*\\(\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\)\\s*", "$1");
                             string s2 = Regex.Replace(input, "\\=\\s*\\(\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\)\\s*", "$2");
-                            if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_INT)
+                            if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_INT)
                             {
                                 int result1;
                                 int result2;
@@ -2910,7 +2914,7 @@ namespace SwissArmyKnifeForMugen
                             {
                                 float result1;
                                 float result2;
-                                if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
+                                if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
                                 {
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_LG_FROM_TO);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;
@@ -2924,7 +2928,7 @@ namespace SwissArmyKnifeForMugen
                         {
                             string s1 = Regex.Replace(input, "\\!\\=\\s*\\[\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\]\\s*", "$1");
                             string s2 = Regex.Replace(input, "\\!\\=\\s*\\[\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\]\\s*", "$2");
-                            if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_INT)
+                            if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_INT)
                             {
                                 int result1;
                                 int result2;
@@ -2941,7 +2945,7 @@ namespace SwissArmyKnifeForMugen
                             {
                                 float result1;
                                 float result2;
-                                if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
+                                if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
                                 {
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_FROM_TO);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;
@@ -2955,7 +2959,7 @@ namespace SwissArmyKnifeForMugen
                         {
                             string s1 = Regex.Replace(input, "\\!\\=\\s*\\(\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\]\\s*", "$1");
                             string s2 = Regex.Replace(input, "\\!\\=\\s*\\(\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\]\\s*", "$2");
-                            if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_INT)
+                            if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_INT)
                             {
                                 int result1;
                                 int result2;
@@ -2972,7 +2976,7 @@ namespace SwissArmyKnifeForMugen
                             {
                                 float result1;
                                 float result2;
-                                if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
+                                if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
                                 {
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_L_FROM_TO);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;
@@ -2986,7 +2990,7 @@ namespace SwissArmyKnifeForMugen
                         {
                             string s1 = Regex.Replace(input, "\\!\\=\\s*\\[\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\)\\s*", "$1");
                             string s2 = Regex.Replace(input, "\\!\\=\\s*\\[\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\)\\s*", "$2");
-                            if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_INT)
+                            if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_INT)
                             {
                                 int result1;
                                 int result2;
@@ -3003,7 +3007,7 @@ namespace SwissArmyKnifeForMugen
                             {
                                 float result1;
                                 float result2;
-                                if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
+                                if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
                                 {
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_G_FROM_TO);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;
@@ -3017,7 +3021,7 @@ namespace SwissArmyKnifeForMugen
                         {
                             string s1 = Regex.Replace(input, "\\!\\=\\s*\\(\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\)\\s*", "$1");
                             string s2 = Regex.Replace(input, "\\!\\=\\s*\\(\\s*(\\-?[0-9\\.]+)\\s*\\,\\s*(\\-?[0-9\\.]+)\\s*\\)\\s*", "$2");
-                            if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_INT)
+                            if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_INT)
                             {
                                 int result1;
                                 int result2;
@@ -3034,7 +3038,7 @@ namespace SwissArmyKnifeForMugen
                             {
                                 float result1;
                                 float result2;
-                                if (TriggerDatabase.TriggerType[triggerType] == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
+                                if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_FLOAT && float.TryParse(s1, out result1) && float.TryParse(s2, out result2))
                                 {
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_LG_FROM_TO);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;

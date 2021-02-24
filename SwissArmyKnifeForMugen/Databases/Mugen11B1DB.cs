@@ -4,17 +4,22 @@
 // MVID: 09478AD8-365C-4BF3-BEA1-B5785151259B
 // Assembly location: C:\Users\ziddi\Downloads\Swiss Army Knife 1.1 Conversion\Swiss Army Knife 1.1 Conversion\SAKnifeWM.exe
 
-namespace SwissArmyKnifeForMugen
+namespace SwissArmyKnifeForMugen.Databases
 {
+    /// <summary>
+    /// Contains addresses and offsets for MUGEN 1.1b1.
+    /// <br/>Most are shared with <c>Mugen11A4DB</c>.
+    /// </summary>
     public class Mugen11B1DB : Mugen11A4DB
     {
         public Mugen11B1DB()
         {
-            this.USE_NEW_DEBUG_COLOR_ADDR = false;
+            // TODO: enable this after finding the right code addrs.
+            USE_NEW_DEBUG_COLOR_ADDR = false;
 
-            this.SPEED_MODE_BASE_OFFSET = 78064U;
-            this.OFFSET_EXPLOD_LIST_OFFSET = 624U;
-            this.ANIM_ADDR_EXPLOD_OFFSET = 484U;
+            SPEED_MODE_BASE_OFFSET = 78064U;
+            OFFSET_EXPLOD_LIST_OFFSET = 624U;
+            ANIM_ADDR_EXPLOD_OFFSET = 484U;
         }
     }
 }

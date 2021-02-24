@@ -6,8 +6,11 @@
 
 using System.Windows.Forms;
 
-namespace SwissArmyKnifeForMugen
+namespace SwissArmyKnifeForMugen.Utils
 {
+  /// <summary>
+  /// Seems to be just a double-buffered view for lists such as Player, Explod lists.
+  /// </summary>
   internal class BufferedListView : ListView
   {
     protected override bool DoubleBuffered

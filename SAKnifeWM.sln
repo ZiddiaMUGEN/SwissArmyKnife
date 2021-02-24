@@ -4,8 +4,6 @@ VisualStudioVersion = 16.0.30907.101
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SAKnifeWM", "SAKnifeWM.csproj", "{5D34859C-7941-4C60-8032-0E17842C9DBC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DebuggingDLL", "..\DebuggingDLL\DebuggingDLL.csproj", "{BE225037-5123-4090-9344-494A4DB390B6}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
