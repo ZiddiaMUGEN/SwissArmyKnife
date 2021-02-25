@@ -41,6 +41,7 @@ namespace SwissArmyKnifeForMugen.Triggers
                 case TriggerId.TRIGGER_FVAR:
                     return mugen.FVAR_PLAYER_OFFSET;
                 case TriggerId.TRIGGER_NUMHELPER:
+                case TriggerId.TRIGGER_NUMHELPER_ID:
                     isOffsetFromBase = true;
                     return mugen.GAMETIME_BASE_OFFSET;
                 default:
@@ -71,6 +72,8 @@ namespace SwissArmyKnifeForMugen.Triggers
                     return ValueType.VALUE_FLOAT;
                 case TriggerId.TRIGGER_NUMHELPER:
                     return ValueType.VALUE_INT;
+                case TriggerId.TRIGGER_NUMHELPER_ID:
+                    return ValueType.VALUE_INT;
                 default:
                     return ValueType.VALUE_NONE;
             }
@@ -89,6 +92,7 @@ namespace SwissArmyKnifeForMugen.Triggers
             TRIGGER_VAR,
             TRIGGER_FVAR,
 			TRIGGER_NUMHELPER,
+            TRIGGER_NUMHELPER_ID,
         }
 
         /// <summary>

@@ -820,7 +820,7 @@ namespace SwissArmyKnifeForMugen.Displays
             this.valueComboBox.MouseClick += new MouseEventHandler(this.valueComboBox_MouseClick);
             this.triggerComboBox.FormattingEnabled = true;
             // list of available trigger types
-            this.triggerComboBox.Items.AddRange(new object[7]
+            this.triggerComboBox.Items.AddRange(new object[]
             {
         (object) "Alive",
         (object) "FVar( xxx )",
@@ -828,7 +828,8 @@ namespace SwissArmyKnifeForMugen.Displays
         (object) "SysFVar( xxx )",
         (object) "SysVar( xxx )",
         (object) "Var( xxx )",
-        (object) "NumHelper"
+        (object) "NumHelper",
+        (object) "NumHelper( xxx )"
             });
             this.triggerComboBox.Location = new Point(58, 44);
             this.triggerComboBox.Name = "triggerComboBox";
@@ -2636,6 +2637,12 @@ namespace SwissArmyKnifeForMugen.Displays
                     {
                         trigger.triggerType = TriggerDatabase.TriggerId.TRIGGER_FVAR;
                         trigger.index = result5;
+                    }
+                    int result6;
+                    if (trigger.triggerType == TriggerDatabase.TriggerId.TRIGGER_NONE && int.TryParse(Regex.Replace(input, "numhelper\\(\\s*([0-9]+)\\s*\\)", "$1"), out result6) && (result6 >= 0 && result6 <= Int32.MaxValue))
+                    {
+                        trigger.triggerType = TriggerDatabase.TriggerId.TRIGGER_NUMHELPER_ID;
+                        trigger.index = result6;
                     }
                 }
                 if (trigger.triggerType == TriggerDatabase.TriggerId.TRIGGER_NONE)

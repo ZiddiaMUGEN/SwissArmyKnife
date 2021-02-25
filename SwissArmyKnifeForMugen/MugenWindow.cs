@@ -2746,9 +2746,9 @@ namespace SwissArmyKnifeForMugen
         /// <br/>all custom monitors use <c>GAMETIME_BASE_OFFSET</c> as their offset so it breaks every frame.
         /// </summary>
         /// <param name="baseAddr">mugen base address</param>
-        /// <param name="rootAddr">root address for the target of this trigger</param>
+        /// <param name="targetAddr">address for the target of this trigger</param>
         /// <returns></returns>
-        private TriggerValue_t GetTriggerValueEx(uint baseAddr, uint rootAddr)
+        private TriggerValue_t GetTriggerValueEx(uint baseAddr, uint targetAddr)
         {
             // we don't have error checking here bc this only gets called from GetTriggerValue
             // if this becomes more extensible, add error checking
@@ -2756,14 +2756,20 @@ namespace SwissArmyKnifeForMugen
             // build the value
             TriggerDatabase.TriggerValue_t triggerValueT = new TriggerDatabase.TriggerValue_t();
             // do logic based on type
+            int playerID = this.GetPlayerId(targetAddr);
             switch (targetTrigger.triggerType)
             {
                 case TriggerId.TRIGGER_NUMHELPER:
                     // count the number of helpers owned by the selected root
-                    int playerID = this.GetPlayerId(rootAddr);
                     int numHelper = this.GetNumHelper(baseAddr, playerID);
                     triggerValueT.valueType = TriggerDatabase.ValueType.VALUE_INT;
                     triggerValueT.SetInt32Value(numHelper);
+                    break;
+                case TriggerId.TRIGGER_NUMHELPER_ID:
+                    // count the number of helpers owned by the selected root, with a specified ID
+                    int numHelperID = this.GetNumHelperID(baseAddr, playerID, targetTrigger.index);
+                    triggerValueT.valueType = TriggerDatabase.ValueType.VALUE_INT;
+                    triggerValueT.SetInt32Value(numHelperID);
                     break;
                 default:
                     return (TriggerDatabase.TriggerValue_t)null;
@@ -2779,6 +2785,26 @@ namespace SwissArmyKnifeForMugen
             {
                 uint playerAddr = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)(index * 4)));
                 if (playerAddr != 0U && this.DoesExist(playerAddr) && playerID == this.GetRootId(baseAddr, this.GetPlayerId(playerAddr)))
+                    num++;
+            }
+            return num;
+        }
+
+        /// <summary>
+        /// helper function to get the number of Helpers with a given ID owned by a given player
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="playerID"></param>
+        /// <param name="helperID"></param>
+        /// <returns></returns>
+        private int GetNumHelperID(uint baseAddr, int playerID, int helperID)
+        {
+            // iterate 56 helpers
+            int num = 0;
+            for (int index = 4; index < 60; ++index)
+            {
+                uint playerAddr = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)(index * 4)));
+                if (playerAddr != 0U && this.DoesExist(playerAddr) && playerID == this.GetRootId(baseAddr, this.GetPlayerId(playerAddr)) && helperID == this.GetHelperId(playerAddr))
                     num++;
             }
             return num;
