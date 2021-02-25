@@ -121,6 +121,12 @@ namespace SwissArmyKnifeForMugen.Databases
             SELF_ASSERT_PLAYER_OFFSET = 0x2AC;
             LOCALCOORD_X_PLAYER_INFO_OFFSET = 0x90;
             LOCALCOORD_Y_PLAYER_INFO_OFFSET = 0x98;
+
+            STAGEPOS_X_PLAYER_OFFSET = 0x220;
+            STAGEPOS_Y_PLAYER_OFFSET = 0x228;
+
+            CAMERAPOS_X_BASE_OFFSET = 0x11F00;
+            CAMERAPOS_Y_BASE_OFFSET = 0x11F04;
         }
     }
 }

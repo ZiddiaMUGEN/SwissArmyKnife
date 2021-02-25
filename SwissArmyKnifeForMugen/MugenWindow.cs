@@ -1488,14 +1488,14 @@ namespace SwissArmyKnifeForMugen
         private int GetProjX(uint playerAddr, uint projAddr)
         {
             if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4)
-                return (int)((double)this._GetFloatData(projAddr, this._addr_db.PROJ_X_PROJ_OFFSET) / (1280.0 / this.GetLocalCoordX(playerAddr)));
+                return (int)((double)this._GetFloatData(projAddr, this._addr_db.PROJ_X_PROJ_OFFSET) / (this.GetScreenX(this.GetBaseAddr()) / this.GetLocalCoordX(playerAddr)));
             return this._mugen_type != MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10 ? this._GetInt32Data(projAddr, this._addr_db.PROJ_X_PROJ_OFFSET) : 320 + (int)this._GetFloatData(projAddr, this._addr_db.PROJ_X_PROJ_OFFSET);
         }
 
         private int GetProjY(uint playerAddr, uint projAddr)
         {
             if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4)
-                return (int)((double)this._GetFloatData(projAddr, this._addr_db.PROJ_Y_PROJ_OFFSET) / (740.0 / this.GetLocalCoordY(playerAddr)));
+                return (int)((double)this._GetFloatData(projAddr, this._addr_db.PROJ_Y_PROJ_OFFSET) / (this.GetScreenY(this.GetBaseAddr()) / this.GetLocalCoordY(playerAddr)));
             return this._mugen_type != MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10 ? this._GetInt32Data(projAddr, this._addr_db.PROJ_Y_PROJ_OFFSET) : 240 + (int)this._GetFloatData(projAddr, this._addr_db.PROJ_Y_PROJ_OFFSET);
         }
 
@@ -1708,20 +1708,32 @@ namespace SwissArmyKnifeForMugen
 
         private int GetFacing(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.FACING_PLAYER_OFFSET) : 0;
 
-        // all the pos/vel computations rely on LocalCoord as well for later Mugen.
-        // they are also inaccurate because they return stage-based co-ords.
-        // TODO: review this
-
         private float GetPosX(uint baseAddr, uint playerAddr)
         {
             if (playerAddr == 0U)
                 return 0.0f;
-            if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4)
+            if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4 || this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11B1)
             {
-                double doubleData = this._GetDoubleData(playerAddr, this._addr_db.POS_X_PLAYER_OFFSET);
-                double localCoordX = this.GetLocalCoordX(playerAddr);
-                double num = (double)this.GetScreenX(baseAddr) / localCoordX;
-                return (float)(doubleData / num);
+                double stagePosX = this._GetDoubleData(playerAddr, this._addr_db.STAGEPOS_X_PLAYER_OFFSET);
+                float camPosX = this._GetFloatData(baseAddr, this._addr_db.CAMERAPOS_X_BASE_OFFSET);
+
+                float stageLocalX = this.GetScreenX(baseAddr);
+                double playerLocalX = this.GetLocalCoordX(playerAddr);
+
+                float scale = (float)(playerLocalX / stageLocalX);
+                return (float)((stagePosX - camPosX) * scale);
+            }
+            else if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10)
+            {
+                // awkwardly done because datatypes changed from 1.0 to 1.1, so regular LocalCoord and Screen funcs fail here.
+                float stagePosX = this._GetFloatData(playerAddr, this._addr_db.STAGEPOS_X_PLAYER_OFFSET);
+                float camPosX = this._GetFloatData(baseAddr, this._addr_db.CAMERAPOS_X_BASE_OFFSET);
+
+                float stageLocalX = this._GetFloatData(baseAddr, this._addr_db.SCREEN_X_BASE_OFFSET);
+                double playerLocalX = this._GetFloatData((uint)this._GetInt32Data(playerAddr, 0), this._addr_db.LOCALCOORD_X_PLAYER_INFO_OFFSET);
+
+                float scale = (float)(playerLocalX / stageLocalX) * (float)2.0;
+                return (float)((stagePosX - camPosX) * scale);
             }
             return this._mugen_type != MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN ? (float)(((double)this._GetFloatData(playerAddr, this._addr_db.POS_X_PLAYER_OFFSET) - (double)this.GetScreenX(baseAddr)) / 2.0) : (float)((double)this._GetFloatData(playerAddr, this._addr_db.POS_X_PLAYER_OFFSET) - (double)this.GetScreenX(baseAddr) - 160.0);
         }
@@ -1730,12 +1742,15 @@ namespace SwissArmyKnifeForMugen
         {
             if (playerAddr == 0U)
                 return 0.0f;
-            if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4)
+            if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4 || this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11B1)
             {
-                double doubleData = this._GetDoubleData(playerAddr, this._addr_db.POS_Y_PLAYER_OFFSET);
-                double localCoordY = this.GetLocalCoordY(playerAddr);
-                double num = (double)this.GetScreenY(baseAddr) / localCoordY;
-                return (float)(doubleData / num);
+                double stagePosY = this._GetDoubleData(playerAddr, this._addr_db.STAGEPOS_Y_PLAYER_OFFSET);
+                return (float)stagePosY;
+            }
+            else if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10)
+            {
+                float stagePosY = this._GetFloatData(playerAddr, this._addr_db.STAGEPOS_Y_PLAYER_OFFSET);
+                return stagePosY;
             }
             return this._mugen_type != MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN ? this._GetFloatData(playerAddr, this._addr_db.POS_Y_PLAYER_OFFSET) / 2f : this._GetFloatData(playerAddr, this._addr_db.POS_Y_PLAYER_OFFSET);
         }
@@ -1764,9 +1779,19 @@ namespace SwissArmyKnifeForMugen
             return playerAddr != 0U ? this._GetFloatData(playerAddr, this._addr_db.VEL_Y_PLAYER_OFFSET) : 0.0f;
         }
 
-        private double GetLocalCoordX(uint playerAddr) => this._mugen_type != MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4 || playerAddr == 0U ? 0.0 : this._GetDoubleData((uint)this._GetInt32Data(playerAddr, 0U), this._addr_db.LOCALCOORD_X_PLAYER_INFO_OFFSET);
+        private double GetLocalCoordX(uint playerAddr) 
+        {
+            if ((this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN) || playerAddr == 0U)
+                return 0.0;
+            else return this._GetDoubleData((uint)this._GetInt32Data(playerAddr, 0U), this._addr_db.LOCALCOORD_X_PLAYER_INFO_OFFSET);
+        }
 
-        private double GetLocalCoordY(uint playerAddr) => this._mugen_type != MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4 || playerAddr == 0U ? 0.0 : this._GetDoubleData((uint)this._GetInt32Data(playerAddr, 0U), this._addr_db.LOCALCOORD_Y_PLAYER_INFO_OFFSET);
+        private double GetLocalCoordY(uint playerAddr)
+        {
+            if ((this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN) || playerAddr == 0U)
+                return 0.0;
+            else return this._GetDoubleData((uint)this._GetInt32Data(playerAddr, 0U), this._addr_db.LOCALCOORD_Y_PLAYER_INFO_OFFSET);
+        }
 
         private int GetSysvar(uint playerAddr, int index) => playerAddr != 0U ? this._GetInt32Data(playerAddr, (uint)((ulong)this._addr_db.SYS_VAR_PLAYER_OFFSET + (ulong)(index * 4))) : 0;
 
