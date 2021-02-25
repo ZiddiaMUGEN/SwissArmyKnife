@@ -40,8 +40,14 @@ namespace SwissArmyKnifeForMugen.Triggers
                     return mugen.VAR_PLAYER_OFFSET;
                 case TriggerId.TRIGGER_FVAR:
                     return mugen.FVAR_PLAYER_OFFSET;
+                case TriggerId.TRIGGER_DAMAGE:
+                    return mugen.DAMAGE_PLAYER_OFFSET;
                 case TriggerId.TRIGGER_NUMHELPER:
                 case TriggerId.TRIGGER_NUMHELPER_ID:
+                case TriggerId.TRIGGER_NUMPROJ_ID:
+                case TriggerId.TRIGGER_NUMEXPLOD_ID:
+                case TriggerId.TRIGGER_NUMTARGET:
+                case TriggerId.TRIGGER_HASTARGET:
                     isOffsetFromBase = true;
                     return mugen.GAMETIME_BASE_OFFSET;
                 default:
@@ -74,6 +80,16 @@ namespace SwissArmyKnifeForMugen.Triggers
                     return ValueType.VALUE_INT;
                 case TriggerId.TRIGGER_NUMHELPER_ID:
                     return ValueType.VALUE_INT;
+                case TriggerId.TRIGGER_NUMPROJ_ID:
+                    return ValueType.VALUE_INT;
+                case TriggerId.TRIGGER_NUMEXPLOD_ID:
+                    return ValueType.VALUE_INT;
+                case TriggerId.TRIGGER_NUMTARGET:
+                    return ValueType.VALUE_INT;
+                case TriggerId.TRIGGER_HASTARGET:
+                    return ValueType.VALUE_BOOL;
+                case TriggerId.TRIGGER_DAMAGE:
+                    return ValueType.VALUE_INT;
                 default:
                     return ValueType.VALUE_NONE;
             }
@@ -93,6 +109,11 @@ namespace SwissArmyKnifeForMugen.Triggers
             TRIGGER_FVAR,
 			TRIGGER_NUMHELPER,
             TRIGGER_NUMHELPER_ID,
+            TRIGGER_NUMPROJ_ID,
+            TRIGGER_NUMEXPLOD_ID,
+            TRIGGER_NUMTARGET,
+            TRIGGER_HASTARGET,
+            TRIGGER_DAMAGE,
         }
 
         /// <summary>
@@ -104,6 +125,7 @@ namespace SwissArmyKnifeForMugen.Triggers
             VALUE_ANY,
             VALUE_INT,
             VALUE_FLOAT,
+            VALUE_BOOL,
         }
 
         /// <summary>
@@ -115,12 +137,14 @@ namespace SwissArmyKnifeForMugen.Triggers
             public uint mask;
             private int iValue;
             private float fValue;
+            private bool bValue;
 
             public TriggerValue_t()
             {
                 valueType = ValueType.VALUE_NONE;
                 iValue = 0;
                 fValue = 0.0f;
+                bValue = false;
                 mask = uint.MaxValue;
             }
 
@@ -129,6 +153,7 @@ namespace SwissArmyKnifeForMugen.Triggers
                 valueType = ValueType.VALUE_NONE;
                 iValue = 0;
                 fValue = 0.0f;
+                bValue = false;
                 mask = uint.MaxValue;
             }
 
@@ -138,9 +163,13 @@ namespace SwissArmyKnifeForMugen.Triggers
 
             public float GetSingleValue() => fValue;
 
+            public bool GetBoolValue() => bValue;
+
             public void SetInt32Value(int value) => iValue = value;
 
             public void SetSingleValue(float value) => fValue = value;
+
+            public void SetBoolValue(bool value) => bValue = value;
 
             public bool isEqual(TriggerValue_t value)
             {
@@ -156,6 +185,8 @@ namespace SwissArmyKnifeForMugen.Triggers
                         return iValue == value.iValue;
                     case ValueType.VALUE_FLOAT:
                         return fValue == (double)value.fValue;
+                    case ValueType.VALUE_BOOL:
+                        return bValue == value.bValue;
                     default:
                         return false;
                 }
