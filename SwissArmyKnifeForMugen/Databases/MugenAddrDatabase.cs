@@ -188,6 +188,8 @@ namespace SwissArmyKnifeForMugen.Databases
         /// Offset to the Global AssertSpecial flags.
         /// </summary>
         public uint ASSERT_1_PLAYER_OFFSET = 0xBB78;
+        public uint CAMERAPOS_X_BASE_OFFSET;
+        public uint CAMERAPOS_Y_BASE_OFFSET;
 
         /* Explod Offsets - relative to EXPLOD_LIST_BASE_OFFSET */
         /// <summary>
@@ -365,6 +367,8 @@ namespace SwissArmyKnifeForMugen.Databases
         /// Offset to the Pos y value (represented as stage co-ords).
         /// </summary>
         public uint POS_Y_PLAYER_OFFSET = 0x1A0;
+        public uint STAGEPOS_X_PLAYER_OFFSET;
+        public uint STAGEPOS_Y_PLAYER_OFFSET;
         /// <summary>
         /// Offset to the Vel x value (before LocalCoord conversion).
         /// </summary>

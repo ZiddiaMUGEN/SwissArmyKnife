@@ -25,8 +25,8 @@ namespace SwissArmyKnifeForMugen.Databases
             DEBUG_MODE_BASE_OFFSET = 0x12048;
             DEBUG_TARGET_BASE_OFFSET = 0x12040;
             GAMETIME_BASE_OFFSET = 0x10EA8;
-            SCREEN_X_BASE_OFFSET = 0xB420;
-            SCREEN_Y_BASE_OFFSET = 0xB424;
+            SCREEN_X_BASE_OFFSET = 0x1B60;
+            SCREEN_Y_BASE_OFFSET = 0x1B64;
             ROUND_STATE_BASE_OFFSET = 0x11710;
             ROUND_NO_BASE_OFFSET = 0x116E4;
             ROUND_TIME_BASE_OFFSET = 0x11724;
@@ -114,6 +114,14 @@ namespace SwissArmyKnifeForMugen.Databases
             ANIM_LIST_REF1_PLAYER_INFO_OFFSET = 0x438;
             ANIM_LIST_REF2_PLAYER_INFO_OFFSET = 0x0;
             ANIM_LIST_REF3_PLAYER_INFO_OFFSET = 0x1C;
+            LOCALCOORD_X_PLAYER_INFO_OFFSET = 0x90;
+            LOCALCOORD_Y_PLAYER_INFO_OFFSET = 0x98;
+
+            STAGEPOS_X_PLAYER_OFFSET = 0x1F4;
+            STAGEPOS_Y_PLAYER_OFFSET = 0x1F8;
+
+            CAMERAPOS_X_BASE_OFFSET = 0x10EF8;
+            CAMERAPOS_Y_BASE_OFFSET = 0x10EFC;
         }
     }
 }
