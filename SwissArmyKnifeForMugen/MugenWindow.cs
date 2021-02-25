@@ -1725,6 +1725,7 @@ namespace SwissArmyKnifeForMugen
             }
             else if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10)
             {
+                // awkwardly done because datatypes changed from 1.0 to 1.1, so regular LocalCoord and Screen funcs fail here.
                 float stagePosX = this._GetFloatData(playerAddr, this._addr_db.STAGEPOS_X_PLAYER_OFFSET);
                 float camPosX = this._GetFloatData(baseAddr, this._addr_db.CAMERAPOS_X_BASE_OFFSET);
 
