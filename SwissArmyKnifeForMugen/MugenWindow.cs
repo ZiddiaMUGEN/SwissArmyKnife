@@ -2643,6 +2643,8 @@ namespace SwissArmyKnifeForMugen
             if (baseAddr == 0U)
                 return (TriggerDatabase.TriggerValue_t)null;
             uint num = 0;
+            // used in custom monitors
+            uint rootAdder = 0;
             TriggerCheckTarget.Player_t targetPlayer = this._triggerCheckTarget.GetTargetPlayer();
             // determine right address to read memory from based on type
             switch (targetPlayer.playerType)
@@ -2651,30 +2653,39 @@ namespace SwissArmyKnifeForMugen
                     return (TriggerDatabase.TriggerValue_t)null;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P1:
                     num = this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET);
+                    rootAdder = num;
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P2:
                     num = this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET + 4U);
+                    rootAdder = num;
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P3:
                     num = this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET + 8U);
+                    rootAdder = num;
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P4:
                     num = this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET + 12U);
+                    rootAdder = num;
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_PLAYERID:
                     num = this.GetPlayerAddrFromId(baseAddr, targetPlayer.pid);
+                    rootAdder = this.GetPlayerAddrFromId(baseAddr, this.GetRootId(baseAddr, targetPlayer.pid));
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P1_HELPERID:
                     num = this.GetPlayerAddrFromHelperId(baseAddr, targetPlayer.pid, 0);
+                    rootAdder = this.GetPlayerAddrFromId(baseAddr, this.GetRootId(baseAddr, targetPlayer.pid));
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P2_HELPERID:
                     num = this.GetPlayerAddrFromHelperId(baseAddr, targetPlayer.pid, 1);
+                    rootAdder = this.GetPlayerAddrFromId(baseAddr, this.GetRootId(baseAddr, targetPlayer.pid));
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P3_HELPERID:
                     num = this.GetPlayerAddrFromHelperId(baseAddr, targetPlayer.pid, 2);
+                    rootAdder = this.GetPlayerAddrFromId(baseAddr, this.GetRootId(baseAddr, targetPlayer.pid));
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P4_HELPERID:
                     num = this.GetPlayerAddrFromHelperId(baseAddr, targetPlayer.pid, 3);
+                    rootAdder = this.GetPlayerAddrFromId(baseAddr, this.GetRootId(baseAddr, targetPlayer.pid));
                     break;
             }
             if (num == 0U)
@@ -2685,6 +2696,13 @@ namespace SwissArmyKnifeForMugen
             if (!TriggerDatabase.IsTriggerAvailable(triggerType))
                 return (TriggerDatabase.TriggerValue_t)null;
             uint addr;
+            // check to see if we offset the addr from player addr or base addr
+            bool isOffsetFromBase = false;
+            // get the exact offset
+            uint offs = TriggerDatabase.GetTriggerAddrForType(this._addr_db, triggerType, ref isOffsetFromBase);
+            // find exact addr based on offsets
+            if (isOffsetFromBase) addr = baseAddr + offs;
+            else addr = num + offs;
             // used to ensure vars read the right offset based on targetTrigger.index
             switch (targetTrigger.triggerType)
             {
@@ -2692,13 +2710,15 @@ namespace SwissArmyKnifeForMugen
                 case TriggerDatabase.TriggerId.TRIGGER_SYSFVAR:
                 case TriggerDatabase.TriggerId.TRIGGER_VAR:
                 case TriggerDatabase.TriggerId.TRIGGER_FVAR:
-                    addr = (uint)((ulong)(num + TriggerDatabase.GetTriggerAddrForType(this._addr_db, triggerType)) + (ulong)(targetTrigger.index * 4));
+                    addr += (uint)(targetTrigger.index * 4);
                     break;
                 default:
-                    addr = num + TriggerDatabase.GetTriggerAddrForType(this._addr_db, triggerType);
                     break;
             }
-            // build an update triggervalue
+            // if this is a GameTime based trigger, it's a custom monitor.
+            if (offs == this._addr_db.GAMETIME_BASE_OFFSET)
+                return GetTriggerValueEx(baseAddr, rootAdder);
+            // build an updated triggervalue
             TriggerDatabase.TriggerValue_t triggerValueT = new TriggerDatabase.TriggerValue_t();
             switch (TriggerDatabase.GetTriggerValueType(triggerType))
             {
@@ -2718,6 +2738,50 @@ namespace SwissArmyKnifeForMugen
                     break;
             }
             return triggerValueT;
+        }
+
+        /// <summary>
+        /// returns the value for a trigger given that the trigger value is a custom monitor
+        /// <br/>a custom monitor requires custom logic to determine the value (e.g. counting the number of Helpers owned by that player)
+        /// <br/>all custom monitors use <c>GAMETIME_BASE_OFFSET</c> as their offset so it breaks every frame.
+        /// </summary>
+        /// <param name="baseAddr">mugen base address</param>
+        /// <param name="rootAddr">root address for the target of this trigger</param>
+        /// <returns></returns>
+        private TriggerValue_t GetTriggerValueEx(uint baseAddr, uint rootAddr)
+        {
+            // we don't have error checking here bc this only gets called from GetTriggerValue
+            // if this becomes more extensible, add error checking
+            TriggerCheckTarget.Trigger_t targetTrigger = this._triggerCheckTarget.GetTargetTrigger();
+            // build the value
+            TriggerDatabase.TriggerValue_t triggerValueT = new TriggerDatabase.TriggerValue_t();
+            // do logic based on type
+            switch (targetTrigger.triggerType)
+            {
+                case TriggerId.TRIGGER_NUMHELPER:
+                    // count the number of helpers owned by the selected root
+                    int playerID = this.GetPlayerId(rootAddr);
+                    int numHelper = this.GetNumHelper(baseAddr, playerID);
+                    triggerValueT.valueType = TriggerDatabase.ValueType.VALUE_INT;
+                    triggerValueT.SetInt32Value(numHelper);
+                    break;
+                default:
+                    return (TriggerDatabase.TriggerValue_t)null;
+            }
+            return triggerValueT;
+        }
+
+        private int GetNumHelper(uint baseAddr, int playerID)
+        {
+            // iterate 56 helpers
+            int num = 0;
+            for (int index = 4; index < 60; ++index)
+            {
+                uint playerAddr = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)(index * 4)));
+                if (playerAddr != 0U && this.DoesExist(playerAddr) && playerID == this.GetRootId(baseAddr, this.GetPlayerId(playerAddr)))
+                    num++;
+            }
+            return num;
         }
 
         /// <summary>
@@ -2770,7 +2834,15 @@ namespace SwissArmyKnifeForMugen
             TriggerId triggerType = targetTrigger.triggerType;
             if (!TriggerDatabase.IsTriggerAvailable(triggerType))
                 return false;
+            // target address for the trigger check
             uint targetAdder;
+            // check to see if we offset the addr from player addr or base addr
+            bool isOffsetFromBase = false;
+            // get the exact offset
+            uint offs = TriggerDatabase.GetTriggerAddrForType(this._addr_db, triggerType, ref isOffsetFromBase);
+            // find exact addr based on offsets
+            if (isOffsetFromBase) targetAdder = baseAddr + offs;
+            else targetAdder = num + offs;
             // offset if var type
             switch (targetTrigger.triggerType)
             {
@@ -2778,10 +2850,9 @@ namespace SwissArmyKnifeForMugen
                 case TriggerDatabase.TriggerId.TRIGGER_SYSFVAR:
                 case TriggerDatabase.TriggerId.TRIGGER_VAR:
                 case TriggerDatabase.TriggerId.TRIGGER_FVAR:
-                    targetAdder = (uint)((ulong)(num + TriggerDatabase.GetTriggerAddrForType(this._addr_db, triggerType)) + (ulong)(targetTrigger.index * 4));
+                    targetAdder += (uint)(targetTrigger.index * 4);
                     break;
                 default:
-                    targetAdder = num + TriggerDatabase.GetTriggerAddrForType(this._addr_db, triggerType);
                     break;
             }
             // set either hardware breakpoint or experimental/software breakpoint

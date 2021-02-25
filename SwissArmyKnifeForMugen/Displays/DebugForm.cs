@@ -794,6 +794,7 @@ namespace SwissArmyKnifeForMugen.Displays
             this.revertButton.UseVisualStyleBackColor = true;
             this.revertButton.Click += new EventHandler(this.revertButton_Click);
             this.valueComboBox.FormattingEnabled = true;
+            // list of available operators and comparisons
             this.valueComboBox.Items.AddRange(new object[14]
             {
         (object) "= xxx",
@@ -818,14 +819,16 @@ namespace SwissArmyKnifeForMugen.Displays
             this.valueComboBox.Text = "(Unspecified)";
             this.valueComboBox.MouseClick += new MouseEventHandler(this.valueComboBox_MouseClick);
             this.triggerComboBox.FormattingEnabled = true;
-            this.triggerComboBox.Items.AddRange(new object[6]
+            // list of available trigger types
+            this.triggerComboBox.Items.AddRange(new object[7]
             {
         (object) "Alive",
         (object) "FVar( xxx )",
         (object) "StateNo",
         (object) "SysFVar( xxx )",
         (object) "SysVar( xxx )",
-        (object) "Var( xxx )"
+        (object) "Var( xxx )",
+        (object) "NumHelper"
             });
             this.triggerComboBox.Location = new Point(58, 44);
             this.triggerComboBox.Name = "triggerComboBox";
@@ -2608,6 +2611,8 @@ namespace SwissArmyKnifeForMugen.Displays
                         trigger.triggerType = TriggerDatabase.TriggerId.TRIGGER_ALIVE;
                     else if (input == "stateno")
                         trigger.triggerType = TriggerDatabase.TriggerId.TRIGGER_STATENO;
+                    else if (input == "numhelper")
+                        trigger.triggerType = TriggerDatabase.TriggerId.TRIGGER_NUMHELPER;
                     int result2;
                     if (trigger.triggerType == TriggerDatabase.TriggerId.TRIGGER_NONE && int.TryParse(Regex.Replace(input, "sysvar\\(\\s*([0-9]+)\\s*\\)", "$1"), out result2) && (result2 >= 0 && result2 <= 4))
                     {
