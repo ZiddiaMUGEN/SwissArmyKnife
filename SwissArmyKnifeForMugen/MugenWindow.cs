@@ -2029,7 +2029,8 @@ namespace SwissArmyKnifeForMugen
                 this.ApplyDebugColorInt(baseAddr, colorBase, debugColor);
             }
             // stateno is split up, so apply differently
-            this.ApplyDebugColorSplit(baseAddr, this._addr_db.NEW_DEBUG_COLOR_SN_OFFSETS, debugColor);
+            if (this._addr_db.NEW_DEBUG_COLOR_SN_OFFSETS.Length == 3)
+                this.ApplyDebugColorSplit(baseAddr, this._addr_db.NEW_DEBUG_COLOR_SN_OFFSETS, debugColor);
         }
 
         /// <summary>

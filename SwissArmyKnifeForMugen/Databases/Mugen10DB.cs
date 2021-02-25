@@ -13,6 +13,10 @@ namespace SwissArmyKnifeForMugen.Databases
     {
         public Mugen10DB()
         {
+            USE_NEW_DEBUG_COLOR_ADDR = true;
+            NEW_DEBUG_COLOR_OFFSETS = new uint[] { 0x44F011, 0x44F189, 0x44F2A3, 0x44F3AD, 0x44EF8B };
+            NEW_DEBUG_COLOR_SN_OFFSETS = new uint[] {  };
+
             MUGEN_POINTER_BASE_OFFSET = 0x52B40C;
             PAUSE_ADDR = 0x52B950;
             CMD_CURRENT_INDEX_ADDR = 0x52A9E8;
