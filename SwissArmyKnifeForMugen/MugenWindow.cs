@@ -2673,19 +2673,19 @@ namespace SwissArmyKnifeForMugen
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P1_HELPERID:
                     num = this.GetPlayerAddrFromHelperId(baseAddr, targetPlayer.pid, 0);
-                    rootAdder = this.GetPlayerAddrFromId(baseAddr, this.GetRootId(baseAddr, targetPlayer.pid));
+                    rootAdder = this.GetPlayerAddrFromId(baseAddr, this.GetRootId(baseAddr, this.GetPlayerId(num)));
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P2_HELPERID:
                     num = this.GetPlayerAddrFromHelperId(baseAddr, targetPlayer.pid, 1);
-                    rootAdder = this.GetPlayerAddrFromId(baseAddr, this.GetRootId(baseAddr, targetPlayer.pid));
+                    rootAdder = this.GetPlayerAddrFromId(baseAddr, this.GetRootId(baseAddr, this.GetPlayerId(num)));
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P3_HELPERID:
                     num = this.GetPlayerAddrFromHelperId(baseAddr, targetPlayer.pid, 2);
-                    rootAdder = this.GetPlayerAddrFromId(baseAddr, this.GetRootId(baseAddr, targetPlayer.pid));
+                    rootAdder = this.GetPlayerAddrFromId(baseAddr, this.GetRootId(baseAddr, this.GetPlayerId(num)));
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P4_HELPERID:
                     num = this.GetPlayerAddrFromHelperId(baseAddr, targetPlayer.pid, 3);
-                    rootAdder = this.GetPlayerAddrFromId(baseAddr, this.GetRootId(baseAddr, targetPlayer.pid));
+                    rootAdder = this.GetPlayerAddrFromId(baseAddr, this.GetRootId(baseAddr, this.GetPlayerId(num)));
                     break;
             }
             if (num == 0U)
