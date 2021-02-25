@@ -14,8 +14,9 @@ namespace SwissArmyKnifeForMugen.Databases
     {
         public Mugen11B1DB()
         {
-            // TODO: enable this after finding the right code addrs.
-            USE_NEW_DEBUG_COLOR_ADDR = false;
+            USE_NEW_DEBUG_COLOR_ADDR = true;
+            NEW_DEBUG_COLOR_OFFSETS = new uint[] { 0x419678, 0x4196E2, 0x419910, 0x419815 };
+            NEW_DEBUG_COLOR_SN_OFFSETS = new uint[] { 0x4199F8, 0x419A04, 0x419A09 };
 
             SPEED_MODE_BASE_OFFSET = 78064U;
             OFFSET_EXPLOD_LIST_OFFSET = 624U;
