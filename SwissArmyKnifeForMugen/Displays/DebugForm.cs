@@ -3244,7 +3244,10 @@ namespace SwissArmyKnifeForMugen.Displays
             {
                 this.triggerCheckResumeButton.Enabled = false;
                 if (MugenWindow.MainObj().GetIsExperimental())
+                {
                     MugenWindow.MainObj().SetPaused(false);
+                    MugenWindow.MainObj().WatchInitVal = 0U;
+                }
                 MugenWindow.MainObj().ResumeTriggerCheckMode();
             }
         }
@@ -3272,8 +3275,9 @@ namespace SwissArmyKnifeForMugen.Displays
                 this.checkModeStateText.BackColor = this._defaultBgColor;
                 this.checkModeStateText.ForeColor = this._defaultFgColor;
                 this.checkModeStateText.Text = "Waiting for start";
-                if (MugenWindow.MainObj().GetIsExperimental())
-                    MugenWindow.MainObj().SetPaused(false);
+                // #9: mugen should remain paused after pressing stop button
+                /*if (MugenWindow.MainObj().GetIsExperimental())
+                    MugenWindow.MainObj().SetPaused(true);*/
                 MugenWindow.MainObj().RemoveExpBP();
                 MugenWindow.MainObj().StopTriggerCheckMode();
             }
