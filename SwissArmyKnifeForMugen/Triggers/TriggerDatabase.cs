@@ -19,11 +19,13 @@ namespace SwissArmyKnifeForMugen.Triggers
         /// </summary>
         /// <param name="mugen">address database to use</param>
         /// <param name="triggerType">type of trigger to check</param>
+        /// <param name="isOffsetFromBase">results as true if the trigger is base-offset, false if it is player-offset</param>
         /// <returns></returns>
-        public static uint GetTriggerAddrForType(MugenAddrDatabase mugen, TriggerId triggerType)
+        public static uint GetTriggerAddrForType(MugenAddrDatabase mugen, TriggerId triggerType, ref bool isOffsetFromBase)
         {
             if (mugen == null)
                 return 0;
+            isOffsetFromBase = false;
             switch (triggerType)
             {
                 case TriggerId.TRIGGER_ALIVE:
@@ -38,6 +40,9 @@ namespace SwissArmyKnifeForMugen.Triggers
                     return mugen.VAR_PLAYER_OFFSET;
                 case TriggerId.TRIGGER_FVAR:
                     return mugen.FVAR_PLAYER_OFFSET;
+                case TriggerId.TRIGGER_NUMHELPER:
+                    isOffsetFromBase = true;
+                    return mugen.GAMETIME_BASE_OFFSET;
                 default:
                     return 0;
             }
@@ -64,6 +69,8 @@ namespace SwissArmyKnifeForMugen.Triggers
                     return ValueType.VALUE_INT;
                 case TriggerId.TRIGGER_FVAR:
                     return ValueType.VALUE_FLOAT;
+                case TriggerId.TRIGGER_NUMHELPER:
+                    return ValueType.VALUE_INT;
                 default:
                     return ValueType.VALUE_NONE;
             }
@@ -81,6 +88,7 @@ namespace SwissArmyKnifeForMugen.Triggers
             TRIGGER_SYSFVAR,
             TRIGGER_VAR,
             TRIGGER_FVAR,
+			TRIGGER_NUMHELPER,
         }
 
         /// <summary>
