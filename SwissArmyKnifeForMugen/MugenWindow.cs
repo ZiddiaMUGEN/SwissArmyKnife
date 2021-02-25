@@ -146,7 +146,7 @@ namespace SwissArmyKnifeForMugen
         private ToolTip toolTip1;
         private System.Windows.Forms.Timer activateTimer;
         private uint watchAddr;
-        private uint watchInitVal;
+        internal uint WatchInitVal { get; set; }
 
         private MugenWindow()
         {
@@ -459,7 +459,7 @@ namespace SwissArmyKnifeForMugen
         public bool LoadMugen(int profileNo)
         {
             this.watchAddr = 0U;
-            this.watchInitVal = 0U;
+            this.WatchInitVal = 0U;
             // loop to wait for the monitor to become available/to kill the old Mugen process
             while (this.mugenWatcher.IsBusy)
             {
@@ -1160,7 +1160,7 @@ namespace SwissArmyKnifeForMugen
         public void RemoveExpBP()
         {
             this.watchAddr = 0U;
-            this.watchInitVal = 0U;
+            this.WatchInitVal = 0U;
         }
 
         public bool IsPaused() => this._addr_db is Mugen11A4DB || this._addr_db is Mugen11B1DB ? (uint)this._GetInt32Data(this.GetBaseAddr(), this._addr_db.PAUSE_ADDR) > 0U : (uint)this._GetInt32Data(0U, this._addr_db.PAUSE_ADDR) > 0U;
@@ -3025,7 +3025,7 @@ namespace SwissArmyKnifeForMugen
             byte[] buf = new byte[4];
             this.watchAddr = targetAdder;
             if (MugenWindow.MainObj().ReadMemory((IntPtr)(long)this.watchAddr, ref buf, 4U) > 0)
-                this.watchInitVal = BitConverter.ToUInt32(buf, 0);
+                this.WatchInitVal = BitConverter.ToUInt32(buf, 0);
             else
                 this.watchAddr = 0U;
         }
@@ -3638,7 +3638,7 @@ namespace SwissArmyKnifeForMugen
                     byte[] buf = new byte[4];
                     if (MugenWindow.MainObj().ReadMemory((IntPtr)(long)this.watchAddr, ref buf, 4U) > 0)
                         num20 = BitConverter.ToUInt32(buf, 0);
-                    if ((int)this.watchInitVal != (int)num20)
+                    if ((int)this.WatchInitVal != (int)num20)
                     {
                         bool isValidTrigger = false;
                         TriggerDatabase.TriggerValue_t triggerValue = this.GetTriggerValue(baseAddr);
