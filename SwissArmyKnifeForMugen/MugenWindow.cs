@@ -17,6 +17,7 @@ using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 using static SwissArmyKnifeForMugen.Triggers.TriggerDatabase;
@@ -527,6 +528,23 @@ namespace SwissArmyKnifeForMugen
                         return false;
                     }
                 }
+                // #3: disable fullscreen
+                // backup mugen config
+                if(File.Exists(profile.GetMugenPath() + "/data/mugen.cfg"))
+                {
+                    // check
+                    string text = File.ReadAllText(profile.GetMugenPath() + "/data/mugen.cfg");
+                    if (text.Contains("FullScreen = 1"))
+                    {
+                        // delete and overwrite
+                        File.Delete(profile.GetMugenPath() + "/data/mugen.cfg.swissarmy.bak");
+                        File.Copy(profile.GetMugenPath() + "/data/mugen.cfg", profile.GetMugenPath() + "/data/mugen.cfg.swissarmy.bak");
+                        // replace
+                        text = text.Replace("FullScreen = 1", "FullScreen = 0");
+                        // write back
+                        File.WriteAllText(profile.GetMugenPath() + "/data/mugen.cfg", text);
+                    }
+                }
                 // setup to launch a debugging process
                 startInfo.FileName = Path.GetFileName(profile.GetMugenExePath());
                 startInfo.Arguments = profile.GetMugenCommandLineOptions() == null ? "" : profile.GetMugenCommandLineOptions();
@@ -767,6 +785,16 @@ namespace SwissArmyKnifeForMugen
                 }
             }
             this.SetTitleActive(false);
+            // #3: revert back to backed-up config
+            MugenProfile profile = ProfileManager.MainObj().GetProfile(this.GetWorkingProfileId());
+            if (File.Exists(profile.GetMugenPath() + "/data/mugen.cfg.swissarmy.bak"))
+            {
+                // delete and overwrite
+                File.Delete(profile.GetMugenPath() + "/data/mugen.cfg");
+                File.Copy(profile.GetMugenPath() + "/data/mugen.cfg.swissarmy.bak", profile.GetMugenPath() + "/data/mugen.cfg");
+                // delete backup
+                File.Delete(profile.GetMugenPath() + "/data/mugen.cfg.swissarmy.bak");
+            }
         }
 
         private void KillGracefully()
