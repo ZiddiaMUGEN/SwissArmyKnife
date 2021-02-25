@@ -23,16 +23,24 @@ using static SwissArmyKnifeForMugen.Triggers.TriggerDatabase;
 
 namespace SwissArmyKnifeForMugen
 {
+    /// <summary>
+    /// heart of the application. most of the monitoring/handling code is in here.
+    /// </summary>
     public class MugenWindow : Form
     {
+        // tracks Mugen type for current profile
         private MugenWindow.MugenType_t _mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN;
         private NativePipeline debugControl = new NativePipeline();
+        // currently-running trigger target
         private TriggerCheckTarget _triggerCheckTarget = new TriggerCheckTarget();
         private int _invokeWaitTime = 10;
         private long _stepModeInterval = 500;
         private int _skipModeFrames = 30;
+        // color of Mugen debug text
         private DebugColor _debugColor = DebugColor.NONE;
+        // used to show current panel in debug window
         private MugenWindow.DebugListMode _debugListMode = MugenWindow.DebugListMode.PLAYER_LIST_MODE;
+        // mugen data lists
         private int[] mugenPlayerId = new int[60];
         private int[] muenHelperId = new int[60];
         private int[] muenParentId = new int[60];
@@ -49,6 +57,7 @@ namespace SwissArmyKnifeForMugen
         private int[] mugenVar = new int[60];
         private float[] mugenSysfvar = new float[5];
         private float[] mugenFvar = new float[40];
+        // for DebugColor.CUSTOM, these are the custom RGB values.
         private int[] customDebugColors = new int[] { 256, 256, 256 };
         private const int GWL_STYLE = -16;
         private const uint WS_CAPTION = 12582912;
@@ -71,23 +80,23 @@ namespace SwissArmyKnifeForMugen
         private const uint WM_KEYUP = 257;
         private const uint WM_CHAR = 258;
         private const uint VK_CONTROL = 17;
-        public const int DEBUG_COLOR_DEFAULT = -1;
-        public const int DEBUG_COLOR_WHITE = 0;
-        public const int DEBUG_COLOR_YELLOW = 1;
-        public const int DEBUG_COLOR_PURPLE = 2;
-        public const int DEBUG_COLOR_RED = 3;
+        // maximums for one page of the list
         public const int MAX_PLAYER_COUNT = 60;
         public const int MAX_EXPLOD_COUNT = 50;
         public const int MAX_PROJ_COUNT = 50;
+        // current address database
         private MugenAddrDatabase _addr_db;
         private Process p;
+        // debugging Mugen process (used with trigger breakpoints)
         private NativeDbgProcess debugP;
         private int debugTargetThread;
+        // freezes Mugen/holds hardware breakpoint
         private bool _isDebugBreakMode;
         private bool _stopDebugBreakFlag;
         private uint _debugSpPointer;
         private static MugenWindow selfObj;
         private int _workingProfileId;
+        // some flags from Mugen for handling window/process state
         private bool _isMugenHidden;
         private bool _isActive;
         private bool _isActivated;
@@ -106,6 +115,7 @@ namespace SwissArmyKnifeForMugen
         private bool _isStepMode;
         private long _stepModeCounter;
         private long _stepModeLastCounter;
+        // for debug form
         private bool _isSpeedMode;
         private bool _isSpeedModeChanged;
         private bool _wasSpeedModeChanged;
@@ -147,8 +157,16 @@ namespace SwissArmyKnifeForMugen
             this.backgroundBox.ImageLocation = MainForm.GetFullPath("background.jpg");
         }
 
+        /// <summary>
+        /// currently-selected profile's Mugen version
+        /// </summary>
+        /// <returns></returns>
         public MugenWindow.MugenType_t getMugenType() => this._mugen_type;
 
+        /// <summary>
+        /// set if a breakpoint is activated + mugen is frozen
+        /// </summary>
+        /// <returns></returns>
         public bool isDebugBreakMode() => this._isDebugBreakMode;
 
         public void stopDebugBreak()
@@ -158,6 +176,10 @@ namespace SwissArmyKnifeForMugen
             this._stopDebugBreakFlag = true;
         }
 
+        /// <summary>
+        /// changes the current trigger target
+        /// </summary>
+        /// <param name="target"></param>
         public void SetTriggerCheckTarget(TriggerCheckTarget target)
         {
             this._triggerCheckTarget = target;
@@ -165,6 +187,8 @@ namespace SwissArmyKnifeForMugen
                 return;
             this._triggerCheckTarget.SetDirty();
         }
+
+        // below functions all change the trigger mode between start, stop, etc
 
         public void StartTriggerCheckMode()
         {
@@ -427,10 +451,16 @@ namespace SwissArmyKnifeForMugen
             base.WndProc(ref m);
         }
 
+        /// <summary>
+        /// launches the Mugen process for a given profile
+        /// </summary>
+        /// <param name="profileNo"></param>
+        /// <returns></returns>
         public bool LoadMugen(int profileNo)
         {
             this.watchAddr = 0U;
             this.watchInitVal = 0U;
+            // loop to wait for the monitor to become available/to kill the old Mugen process
             while (this.mugenWatcher.IsBusy)
             {
                 this.mugenWatcher.CancelAsync();
@@ -445,12 +475,14 @@ namespace SwissArmyKnifeForMugen
                 }
                 Application.DoEvents();
             }
+            // doublecheck the old process has died
             if (this.p == null || this.p.HasExited)
             {
                 this._isMugenHidden = false;
                 this._isActivated = false;
                 this._isActivatedOnce = false;
                 this._isShownOnce = false;
+                // type is determined on launch
                 this._mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_NONE;
                 MugenProfile profile = ProfileManager.MainObj().GetProfile(profileNo);
                 if (profile == null)
@@ -464,6 +496,7 @@ namespace SwissArmyKnifeForMugen
                         AsyncAppendLog("The mugen executable was not found.");
                     return false;
                 }
+                // determine the actual MugenType_t (ie version)
                 this._mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN;
                 FileVersionInfo versionInfo = FileVersionInfo.GetVersionInfo(profile.GetMugenExePath());
                 if (versionInfo != null)
@@ -494,6 +527,7 @@ namespace SwissArmyKnifeForMugen
                         return false;
                     }
                 }
+                // setup to launch a debugging process
                 startInfo.FileName = Path.GetFileName(profile.GetMugenExePath());
                 startInfo.Arguments = profile.GetMugenCommandLineOptions() == null ? "" : profile.GetMugenCommandLineOptions();
                 startInfo.WorkingDirectory = profile.GetMugenPath();
@@ -504,6 +538,7 @@ namespace SwissArmyKnifeForMugen
                 Environment.CurrentDirectory = startInfo.WorkingDirectory;
                 try
                 {
+                    // launch the base process
                     this.p = Process.Start(startInfo);
                     Environment.CurrentDirectory = currentDirectory;
                 }
@@ -516,16 +551,19 @@ namespace SwissArmyKnifeForMugen
                     return false;
                 }
             }
+            // confirm we launched successfully
             if (this.p != null && !this.p.HasExited)
             {
                 this.p.WaitForInputIdle(5000);
                 int num1 = 200;
+                // waiting for the process to launch the Mugen window
                 while (num1-- >= 0 && this.p != null && !this.p.HasExited && this.p.MainWindowHandle.Equals((object)IntPtr.Zero))
                 {
                     Thread.Sleep(50);
                     this.p.Refresh();
                     Application.DoEvents();
                 }
+                // failsafe, may have crashed pre-load
                 if (this.p == null || this.p.HasExited)
                 {
                     this._mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_NONE;
@@ -544,6 +582,7 @@ namespace SwissArmyKnifeForMugen
                     return false;
                 }
                 StringBuilder lpString = new StringBuilder(4132);
+                // doublecheck the window looks good
                 if (!this.p.MainWindowHandle.Equals((object)IntPtr.Zero) && MugenWindow.GetWindowText(this.p.MainWindowHandle, lpString, lpString.Capacity) != 0)
                 {
                     string lower = lpString.ToString().ToLower();
@@ -555,6 +594,7 @@ namespace SwissArmyKnifeForMugen
                         return false;
                     }
                 }
+                // capture the Mugen window and force it into our container
                 uint unValue = (uint)((int)MugenWindow.GetWindowLong(this.p.MainWindowHandle, -16) & -12582913 & int.MaxValue);
                 if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10 || this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4)
                 {
@@ -569,23 +609,26 @@ namespace SwissArmyKnifeForMugen
                     int num3 = (int)MugenWindow.SetParent(this.p.MainWindowHandle, this.backgroundBox.Handle);
                     MugenWindow.SetWindowPos(this.p.MainWindowHandle, 0, 0, 0, 640, 480, 68);
                 }
+                // set predetermined flags based on profile setup
                 MugenProfile profile = ProfileManager.MainObj().GetProfile(profileNo);
                 if (profile != null)
                 {
                     DebugForm.MainObj().SetSpeedModeCheckBox(profile.IsSpeedMode(), true);
                     DebugForm.MainObj().SetSkipModeCheckBox(profile.IsSkipMode());
                     DebugForm.MainObj().SetDebugModeCheckBox(profile.IsDebugMode(), true);
-                    DebugForm.MainObj().PreInitTriggerCheck(this._mugen_type);
+                    DebugForm.MainObj().PreInitTriggerCheck(this._mugen_type); // in case of saved triggers
                     this._workingProfileId = profile.GetProfileNo();
                 }
                 this._isMugenFrozen = false;
                 this._isGameQuitted = false;
                 this._isMugenCrashed = false;
                 this._addr_db = MugenAddrDatabase.GetAddrDatabase(this._mugen_type);
+                // launch monitor
                 if (!this.mugenWatcher.IsBusy)
                     this.mugenWatcher.RunWorkerAsync();
                 return true;
             }
+            // failure case
             this._mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_NONE;
             return false;
         }
@@ -594,6 +637,9 @@ namespace SwissArmyKnifeForMugen
 
         public void DettachMugen() => MugenWindow.AttachThreadInput(MugenWindow.GetWindowThreadProcessId(this.p.MainWindowHandle, IntPtr.Zero), MugenWindow.GetWindowThreadProcessId(this.Handle, IntPtr.Zero), false);
 
+        /// <summary>
+        /// show mugen + do not unpause (some mugens unpause on focus/unfocus)
+        /// </summary>
         public void ShowMugen()
         {
             if (this._isDebugBreakMode)
@@ -626,11 +672,16 @@ namespace SwissArmyKnifeForMugen
             this.LoadMugen(this._workingProfileId);
         }
 
+        /// <summary>
+        /// cleanly close the process + stop monitors
+        /// </summary>
         public void CloseMugen()
         {
+            // stop trigger breakpoint freeze
             this.stopDebugBreak();
             if (this.p != null)
             {
+                // kill the monitor process
                 while (this.mugenWatcher.IsBusy)
                 {
                     this.mugenWatcher.CancelAsync();
@@ -642,6 +693,7 @@ namespace SwissArmyKnifeForMugen
                     {
                         if (!this._isDebugBreakMode)
                         {
+                            // confirmation that the process is ready to be killed
                             if (this.p.Responding)
                             {
                                 MugenWindow.SetForegroundWindow(this.p.MainWindowHandle);
@@ -771,9 +823,14 @@ namespace SwissArmyKnifeForMugen
 
         public void ResetGameQuitted() => this._isGameQuitted = false;
 
+        /// <summary>
+        /// checks if Mugen process has experienced an error
+        /// </summary>
+        /// <returns></returns>
         public bool CheckMugenError()
         {
             bool result = false;
+            // flag is set elsewhere (by monitor)
             if (this._isMugenCrashed)
                 return this.p == null || this.p.HasExited;
             if (this.p != null)
@@ -781,16 +838,19 @@ namespace SwissArmyKnifeForMugen
                 MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
                 if (this.p.HasExited)
                     result = false;
+                // if it's frozen, we treat as an error/crash and prompt to close
                 else if (this._isMugenFrozen)
                 {
                     this._isMugenCrashed = true;
                     if (LogManager.MainObj() != null)
                         AsyncAppendLog("mugen has frozen." + Environment.NewLine);
                     result = true;
+                    // log current player data to file+console (to help identify cause of freeze)
                     this.DumpPlayers();
-                    bool flag = false;
+                    bool foundMugen = false;
                     Process[] processes = Process.GetProcesses();
                     StringBuilder lpString = new StringBuilder(4132);
+                    // make sure to identify+kill mugen
                     foreach (Process process in processes)
                     {
                         IntPtr mainWindowHandle = process.MainWindowHandle;
@@ -802,24 +862,26 @@ namespace SwissArmyKnifeForMugen
                                 string lower = lpString.ToString().ToLower();
                                 if (lower.Contains("mugen") && lower.Contains(".exe"))
                                 {
-                                    flag = true;
+                                    foundMugen = true;
                                     process.CloseMainWindow();
                                 }
                             }
                         }
                     }
+                    // isautomode causes this to automatically die
                     if (profile != null && profile.IsAutoMode())
                     {
-                        if (!flag)
-                            TimedMessageBox.Show("mugen has frozen. The process wil bee terminated. \r\n\r\n(This dialog will automatically close.)", true);
+                        if (!foundMugen)
+                            TimedMessageBox.Show("mugen has frozen. The process wil be terminated. \r\n\r\n(This dialog will automatically close.)", true);
                         else
                             TimedMessageBox.Show("mugen has been terminated. \r\n\r\n(This dialog will automatically close.)", true);
                         this.CloseMugen();
                     }
-                    else if (!flag)
+                    else if (!foundMugen)
                     {
                         if (this.p != null && !this.p.HasExited)
                         {
+                            // prompt to kill the process
                             if (MessageBox.Show("mugen has frozen. Would you like to terminate the process?", "Error", MessageBoxButtons.YesNo) == DialogResult.Yes)
                                 this.CloseMugen();
                             else
@@ -833,6 +895,7 @@ namespace SwissArmyKnifeForMugen
                     }
                     else
                     {
+                        // kill automatically
                         TimedMessageBox.Show("mugen has been terminated. \r\n\r\n(This dialog will automatically close.)", true);
                         this.CloseMugen();
                     }
@@ -905,6 +968,9 @@ namespace SwissArmyKnifeForMugen
 
         public bool IsActivatedOnce() => this._isActivatedOnce;
 
+        /// <summary>
+        /// update the MugenWindow title to display timing info/active flag
+        /// </summary>
         public void UpdateTitle()
         {
             DateTime now = DateTime.Now;
@@ -925,6 +991,10 @@ namespace SwissArmyKnifeForMugen
 
         public bool IsTitleActive() => this._isActive;
 
+        /// <summary>
+        /// pushes keypresses from MugenWindow to the subprocess Mugen
+        /// </summary>
+        /// <param name="c"></param>
         public void SendKey(char c)
         {
             uint Msg = 258;
@@ -933,6 +1003,13 @@ namespace SwissArmyKnifeForMugen
             MugenWindow.SendMessage1(this.p.MainWindowHandle, Msg, (int)c, 0);
         }
 
+        /// <summary>
+        /// directly reads memory from the Mugen process in a safe manner, writes to a buffer, and returns the size.
+        /// </summary>
+        /// <param name="addr">address to read from</param>
+        /// <param name="buf">buffer to write to</param>
+        /// <param name="bufLen">length of the buffer</param>
+        /// <returns></returns>
         public int ReadMemory(IntPtr addr, ref byte[] buf, uint bufLen)
         {
             if (this.p == null || this.p.HasExited)
@@ -950,6 +1027,12 @@ namespace SwissArmyKnifeForMugen
             return lpNumberOfBytesRead;
         }
 
+        /// <summary>
+        /// writes values in a buffer to an address in memory
+        /// </summary>
+        /// <param name="addr"></param>
+        /// <param name="buf"></param>
+        /// <param name="bufLen"></param>
         public void WriteMemory(IntPtr addr, ref byte[] buf, uint bufLen)
         {
             if (this.p == null)
@@ -1052,6 +1135,10 @@ namespace SwissArmyKnifeForMugen
             }
         }
 
+        /// <summary>
+        /// fetch the base address of the Mugen game structure from [MUGEN_POINTER_BASE_OFFSET]
+        /// </summary>
+        /// <returns></returns>
         private uint GetBaseAddr()
         {
             uint num = 0;
@@ -1061,8 +1148,15 @@ namespace SwissArmyKnifeForMugen
             return num;
         }
 
+        /// <summary>
+        /// indicates if experimental breakpoints are enabled
+        /// </summary>
+        /// <returns></returns>
         public bool GetIsExperimental() => ProfileManager.MainObj().GetProfile(this._workingProfileId).IsExperimentalBreakpoints();
 
+        /// <summary>
+        /// unset an existing experimental BP
+        /// </summary>
         public void RemoveExpBP()
         {
             this.watchAddr = 0U;
@@ -1127,6 +1221,14 @@ namespace SwissArmyKnifeForMugen
 
         private void SetDrawGameCount(uint baseAddr, int value) => this._SetInt32Data(baseAddr, this._addr_db.DRAW_GAME_COUNT_BASE_OFFSET, value);
 
+        /// <summary>
+        /// gets a player address from the Mugen base addr and an offset.
+        /// <br/>for p1, this would be [[MUGEN_POINTER_BASE_OFFSET] + PLAYER_1_BASE_OFFSET]
+        /// <br/>for subsequent players/helpers, add 4 per
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="offset"></param>
+        /// <returns></returns>
         private uint _GetPlayerAddr(uint baseAddr, uint offset)
         {
             uint num = 0;
@@ -1144,6 +1246,12 @@ namespace SwissArmyKnifeForMugen
 
         private uint GetP4Addr(uint baseAddr) => this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET + 12U);
 
+        /// <summary>
+        /// gets a player info address from a player address
+        /// <br/>this is exactly [playerAddr] (or, [[[MUGEN_POINTER_BASE_OFFSET] + PLAYER_1_BASE_OFFSET + index*4]])
+        /// </summary>
+        /// <param name="playerAddr"></param>
+        /// <returns></returns>
         private uint GetPlayerInfoAdder(uint playerAddr)
         {
             uint num = 0;
@@ -1153,6 +1261,11 @@ namespace SwissArmyKnifeForMugen
             return num;
         }
 
+        /// <summary>
+        /// fetch the global explod list (this is relative to MUGEN_POINTER_BASE_OFFSET)
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <returns></returns>
         private uint GetExplodListAdder(uint baseAddr)
         {
             uint num1 = 0;
@@ -1167,6 +1280,12 @@ namespace SwissArmyKnifeForMugen
 
         private uint GetExplodAdder(uint explodListAddr, uint index) => explodListAddr + index * this._addr_db.OFFSET_EXPLOD_LIST_OFFSET;
 
+        /// <summary>
+        /// gets the display name (this is relative to the addr returned by <c>GetPlayerInfoAdder</c>)
+        /// </summary>
+        /// <param name="playerAddr"></param>
+        /// <param name="displayName"></param>
+        /// <returns></returns>
         private int GetDisplayName(uint playerAddr, ref string displayName)
         {
             byte[] buf = new byte[256];
@@ -1179,6 +1298,12 @@ namespace SwissArmyKnifeForMugen
             return displayName.Length;
         }
 
+        /// <summary>
+        /// helper function to read an integer from a specified address+offset combo
+        /// </summary>
+        /// <param name="addr">base address to read at</param>
+        /// <param name="offset">offset from addr</param>
+        /// <returns>data stored in memory as an integer</returns>
         private int _GetInt32Data(uint addr, uint offset)
         {
             int num = 0;
@@ -1188,6 +1313,24 @@ namespace SwissArmyKnifeForMugen
             return num;
         }
 
+        /// <summary>
+        /// sets one int of data in Mugen's memory.
+        /// </summary>
+        /// <param name="addr">address to write to</param>
+        /// <param name="offset">offset from addr to write to</param>
+        /// <param name="value">value to write</param>
+        private void _SetInt32Data(uint addr, uint offset, int value)
+        {
+            byte[] bytes = BitConverter.GetBytes(value);
+            MugenWindow.MainObj().WriteMemory((IntPtr)(long)(addr + offset), ref bytes, 4U);
+        }
+
+        /// <summary>
+        /// helper function to read a float from a specified address+offset combo
+        /// </summary>
+        /// <param name="addr">base address to read at</param>
+        /// <param name="offset">offset from addr</param>
+        /// <returns>data stored in memory as a float (4-byte)</returns>
         private float _GetFloatData(uint addr, uint offset)
         {
             float num = 0.0f;
@@ -1197,6 +1340,12 @@ namespace SwissArmyKnifeForMugen
             return num;
         }
 
+        /// <summary>
+        /// helper function to read a double from a specified address+offset combo
+        /// </summary>
+        /// <param name="addr">base address to read at</param>
+        /// <param name="offset">offset from addr</param>
+        /// <returns>data stored in memory as a double (8-byte float)</returns>
         private double _GetDoubleData(uint addr, uint offset)
         {
             double num = 0.0;
@@ -1212,6 +1361,13 @@ namespace SwissArmyKnifeForMugen
 
         private int GetParentId(uint playerAddr) => this._GetInt32Data(playerAddr, this._addr_db.PARENT_ID_PLAYER_OFFSET);
 
+        /// <summary>
+        /// helper function to find a player slot/index from player ID.
+        /// <br/>iterates all 60 possible indices until it finds one that matches the input ID.
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="playerId"></param>
+        /// <returns></returns>
         private int GetPlayerNoFromId(uint baseAddr, int playerId)
         {
             for (int index = 0; index < 60; ++index)
@@ -1223,6 +1379,13 @@ namespace SwissArmyKnifeForMugen
             return -1;
         }
 
+        /// <summary>
+        /// helper function to find a player address from player ID.
+        /// <br/>iterates all 60 possible indices until it finds one that matches the input ID.
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="playerId"></param>
+        /// <returns></returns>
         private uint GetPlayerAddrFromId(uint baseAddr, int playerId)
         {
             for (int index = 0; index < 60; ++index)
@@ -1234,6 +1397,15 @@ namespace SwissArmyKnifeForMugen
             return 0;
         }
 
+        /// <summary>
+        /// helper function to find a player slot/index from helper ID.
+        /// <br/>iterates all 56 possible Helper indices until it finds one that matches the input ID.
+        /// <br/>additionally checks that the root ID for the Helper matches the input owner.
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="helperId"></param>
+        /// <param name="owner"></param>
+        /// <returns></returns>
         private uint GetPlayerAddrFromHelperId(uint baseAddr, int helperId, int owner)
         {
             uint playerAddr1 = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)(owner * 4)));
@@ -1255,6 +1427,12 @@ namespace SwissArmyKnifeForMugen
             return 0;
         }
 
+        /// <summary>
+        /// gets the root ID for a given helper's player ID
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="myId"></param>
+        /// <returns></returns>
         private int GetRootId(uint baseAddr, int myId)
         {
             int num = 0;
@@ -1372,6 +1550,13 @@ namespace SwissArmyKnifeForMugen
 
         private int GetPower(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.POWER_PLAYER_OFFSET) : 0;
 
+        /// <summary>
+        /// navigates anim structures to read anim list address
+        /// <br/>this one is a complicated one due to 3x redirected pointers.
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="playerAddr"></param>
+        /// <returns></returns>
         private uint GetAnimListAddr(uint baseAddr, uint playerAddr)
         {
             if (playerAddr == 0U)
@@ -1397,6 +1582,11 @@ namespace SwissArmyKnifeForMugen
             return 0;
         }
 
+        /// <summary>
+        /// helper function to verify the anim list was found, this appears to be some sort of 'checksum'.
+        /// </summary>
+        /// <param name="targetAddr"></param>
+        /// <returns></returns>
         private bool _CheckAnimList(uint targetAddr)
         {
             try
@@ -1518,6 +1708,10 @@ namespace SwissArmyKnifeForMugen
 
         private int GetFacing(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.FACING_PLAYER_OFFSET) : 0;
 
+        // all the pos/vel computations rely on LocalCoord as well for later Mugen.
+        // they are also inaccurate because they return stage-based co-ords.
+        // TODO: review this
+
         private float GetPosX(uint baseAddr, uint playerAddr)
         {
             if (playerAddr == 0U)
@@ -1594,6 +1788,12 @@ namespace SwissArmyKnifeForMugen
 
         private float GetAttackMulSet(uint playerAddr) => playerAddr != 0U ? this._GetFloatData(playerAddr, this._addr_db.ATTACK_MUL_SET_PLAYER_OFFSET) : 0.0f;
 
+        /// <summary>
+        /// fetches the global AssertSpecial flags.
+        /// <br/>these are a list of sequential int flags relative to the base address.
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <returns></returns>
         private bool[] GetGlobalAssertSpecials(uint baseAddr)
         {
             bool[] flagArray = new bool[11];
@@ -1622,6 +1822,12 @@ namespace SwissArmyKnifeForMugen
             return flagArray;
         }
 
+        /// <summary>
+        /// fetches the player AssertSpecial flags.
+        /// <br/>these are a list of sequential int flags relative to the player's address.
+        /// </summary>
+        /// <param name="playerAddr"></param>
+        /// <returns></returns>
         private bool[] GetSelfAssertSpecials(uint playerAddr)
         {
             bool[] flagArray = new bool[9];
@@ -1658,18 +1864,17 @@ namespace SwissArmyKnifeForMugen
 
         private int GetTimerFreeze(uint baseAddr) => baseAddr == 0U || (this._GetInt32Data(baseAddr, this._addr_db.ASSERT_1_PLAYER_OFFSET + 4U) & 16777216) == 0 ? 0 : 1;
 
-        private void _SetInt32Data(uint addr, uint offset, int value)
-        {
-            byte[] bytes = BitConverter.GetBytes(value);
-            MugenWindow.MainObj().WriteMemory((IntPtr)(long)(addr + offset), ref bytes, 4U);
-        }
-
         private void SetCtrl(uint playerAddr, bool ctrl)
         {
             int num = ctrl ? 1 : 0;
             this._SetInt32Data(playerAddr, this._addr_db.CTRL_PLAYER_OFFSET, num);
         }
 
+        /// <summary>
+        /// currently unused - forcibly unsets a player's existence flag to cause Mugen to regard them as invalid
+        /// </summary>
+        /// <param name="playerAddr"></param>
+        /// <param name="exist"></param>
         private void DeletePlayer(uint playerAddr, bool exist)
         {
             int num = exist ? 1 : 0;
@@ -1688,6 +1893,11 @@ namespace SwissArmyKnifeForMugen
             this._SetInt32Data(baseAddr, this._addr_db.SKIP_MODE_BASE_OFFSET, num);
         }
 
+        /// <summary>
+        /// enables or disabled Mugen's debug text with a focus on player 1.
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="isDebugMode"></param>
         private void EnableDebugKey(uint baseAddr, bool isDebugMode)
         {
             if (isDebugMode)
@@ -1715,8 +1925,18 @@ namespace SwissArmyKnifeForMugen
                 this._SetInt32Data(baseAddr, this._addr_db.DEBUG_MODE_BASE_OFFSET, 0);
         }
 
+        /// <summary>
+        /// sets the current focus for debug text to the indicated targetNo (value from 1 to 60).
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="targetNo"></param>
         private void SetDebugTargetNo(uint baseAddr, int targetNo) => this._SetInt32Data(baseAddr, this._addr_db.DEBUG_TARGET_BASE_OFFSET, targetNo);
 
+        /// <summary>
+        /// sets the color of the debug text.
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="debugColor">DebugColor enum to use</param>
         private void SetDebugColor(uint baseAddr, DebugColor debugColor)
         {
             if (this._addr_db.USE_NEW_DEBUG_COLOR_ADDR)
@@ -1771,6 +1991,11 @@ namespace SwissArmyKnifeForMugen
             }
         }
 
+        /// <summary>
+        /// sets the color of the debug text, in a way that works with Mugen 1.0+.
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="debugColor">DebugColor enum to use</param>
         private void SetDebugColorEX(uint baseAddr, DebugColor debugColor)
         {
             // iterate all the new debug color offsets
@@ -1782,6 +2007,15 @@ namespace SwissArmyKnifeForMugen
             this.ApplyDebugColorSplit(baseAddr, this._addr_db.NEW_DEBUG_COLOR_SN_OFFSETS, debugColor);
         }
 
+        /// <summary>
+        /// helper function for Mugen 1.0+ debug text coloring
+        /// <br/>this one sets three disjointed offsets as individual red, green, blue offsets
+        /// <br/>keep in mind each offset is 5 bytes long (as we are modifying instructions here,
+        /// <br/>so the value 256 is actually `68 00 01 00 00`, 68=push)
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="offsets"></param>
+        /// <param name="debugColor"></param>
         private void ApplyDebugColorSplit(uint baseAddr, uint[] offsets, DebugColor debugColor)
         {
             switch (debugColor)
@@ -1829,6 +2063,14 @@ namespace SwissArmyKnifeForMugen
             }
         }
 
+        /// <summary>
+        /// helper function for Mugen 1.0+ debug text coloring
+        /// <br/>keep in mind each offset is 5 bytes long (as we are modifying instructions here,
+        /// <br/>so the value 256 is actually `68 00 01 00 00`, 68=push)
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="offsets"></param>
+        /// <param name="debugColor"></param>
         private void ApplyDebugColorInt(uint baseAddr, uint colorBase, DebugColor debugColor)
         {
             switch (debugColor)
@@ -1881,6 +2123,10 @@ namespace SwissArmyKnifeForMugen
             this.customDebugColors = new int[] { red, green, blue };
         }
 
+        /// <summary>
+        /// UNUSED - forcibly ends a round by time over and sets roundstate to 3.
+        /// </summary>
+        /// <param name="baseAddr"></param>
         public void ForceTimeOver(uint baseAddr)
         {
             int roundTime = this.GetRoundTime(baseAddr);
@@ -1904,6 +2150,11 @@ namespace SwissArmyKnifeForMugen
             }
         }
 
+        /// <summary>
+        /// injects a debug key into Mugen by setting the CMD_KEY addresses.
+        /// <br/>notice keycodes changed between Win,1.0,1.1a4.
+        /// </summary>
+        /// <param name="keyCode"></param>
         public void _InjectCommand(int keyCode)
         {
             if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4)
@@ -1928,6 +2179,11 @@ namespace SwissArmyKnifeForMugen
             }
         }
 
+        /// <summary>
+        /// injects a debug key into Mugen by setting the CMD_KEY addresses.
+        /// <br/>notice keycodes/cmd indexes changed between Win,1.0,1.1a4.
+        /// </summary>
+        /// <param name="keyCode"></param>
         public void InjectCommand(int keyCode)
         {
             if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4 || this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11B1)
@@ -1952,6 +2208,10 @@ namespace SwissArmyKnifeForMugen
             }
         }
 
+        /// <summary>
+        /// checks the debug key which is going to be processed next by Mugen
+        /// </summary>
+        /// <returns></returns>
         public int CheckNextCommand()
         {
             int int32Data = this._GetInt32Data(0U, this._addr_db.CMD_NEXT_INDEX_ADDR);
@@ -2027,6 +2287,9 @@ namespace SwissArmyKnifeForMugen
 
         public void DumpPlayers() => this._flagDumpPlayers = true;
 
+        /// <summary>
+        /// force a stepframe to run
+        /// </summary>
         public void InjectStepCommand()
         {
             if (this._mugen_type != MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN)
@@ -2186,6 +2449,10 @@ namespace SwissArmyKnifeForMugen
             this.BeginInvoke((Action)(() => DebugForm.MainObj().DisplayProjs(playerId, this._projHeadNo, 50, this.mugenProjId, this.mugenProjX, this.mugenProjY)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
         }
 
+        /// <summary>
+        /// update all of the data the current debug player.
+        /// </summary>
+        /// <param name="baseAddr"></param>
         private void UpdateVariables(uint baseAddr)
         {
             uint playerAddr = 0;
@@ -2365,12 +2632,19 @@ namespace SwissArmyKnifeForMugen
             this.BeginInvoke((Action)(() => GameLogger.MainObj().DumpCharDataEx(displayName)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
         }
 
+        /// <summary>
+        /// gets the current value of the location pointed to by a TriggerValue
+        /// <br/>involves reading a predetermined location in memory based on the PlayerType for the TriggerValue
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <returns></returns>
         private TriggerDatabase.TriggerValue_t GetTriggerValue(uint baseAddr)
         {
             if (baseAddr == 0U)
                 return (TriggerDatabase.TriggerValue_t)null;
             uint num = 0;
             TriggerCheckTarget.Player_t targetPlayer = this._triggerCheckTarget.GetTargetPlayer();
+            // determine right address to read memory from based on type
             switch (targetPlayer.playerType)
             {
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_NONE:
@@ -2405,11 +2679,13 @@ namespace SwissArmyKnifeForMugen
             }
             if (num == 0U)
                 return (TriggerDatabase.TriggerValue_t)null;
+            // check the target trigger
             TriggerCheckTarget.Trigger_t targetTrigger = this._triggerCheckTarget.GetTargetTrigger();
             TriggerId triggerType = targetTrigger.triggerType;
             if (!TriggerDatabase.IsTriggerAvailable(triggerType))
                 return (TriggerDatabase.TriggerValue_t)null;
             uint addr;
+            // used to ensure vars read the right offset based on targetTrigger.index
             switch (targetTrigger.triggerType)
             {
                 case TriggerDatabase.TriggerId.TRIGGER_SYSVAR:
@@ -2422,6 +2698,7 @@ namespace SwissArmyKnifeForMugen
                     addr = num + TriggerDatabase.GetTriggerAddrForType(this._addr_db, triggerType);
                     break;
             }
+            // build an update triggervalue
             TriggerDatabase.TriggerValue_t triggerValueT = new TriggerDatabase.TriggerValue_t();
             switch (TriggerDatabase.GetTriggerValueType(triggerType))
             {
@@ -2443,12 +2720,18 @@ namespace SwissArmyKnifeForMugen
             return triggerValueT;
         }
 
+        /// <summary>
+        /// sets a breakpoint based on the trigger type and player type in use by the curremt TriggerCheckTarget
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <returns></returns>
         private bool _SetBreakPoint(uint baseAddr)
         {
             if (baseAddr == 0U || this.debugTargetThread == 0)
                 return false;
             uint num = 0;
             TriggerCheckTarget.Player_t targetPlayer = this._triggerCheckTarget.GetTargetPlayer();
+            // find base address to monitor based on PlayerType
             switch (targetPlayer.playerType)
             {
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_NONE:
@@ -2488,6 +2771,7 @@ namespace SwissArmyKnifeForMugen
             if (!TriggerDatabase.IsTriggerAvailable(triggerType))
                 return false;
             uint targetAdder;
+            // offset if var type
             switch (targetTrigger.triggerType)
             {
                 case TriggerDatabase.TriggerId.TRIGGER_SYSVAR:
@@ -2500,6 +2784,7 @@ namespace SwissArmyKnifeForMugen
                     targetAdder = num + TriggerDatabase.GetTriggerAddrForType(this._addr_db, triggerType);
                     break;
             }
+            // set either hardware breakpoint or experimental/software breakpoint
             if (ProfileManager.MainObj().GetProfile(this._workingProfileId).IsExperimentalBreakpoints())
                 this.__SetExperimentalBreakPoint(targetAdder);
             else
@@ -2507,6 +2792,11 @@ namespace SwissArmyKnifeForMugen
             return true;
         }
 
+        /// <summary>
+        /// sets a software/experimental breakpoint at the provided address
+        /// <br/>saves the address to monitor and an initial value.
+        /// </summary>
+        /// <param name="targetAdder"></param>
         private void __SetExperimentalBreakPoint(uint targetAdder)
         {
             if (targetAdder == 0U)
@@ -2519,6 +2809,11 @@ namespace SwissArmyKnifeForMugen
                 this.watchAddr = 0U;
         }
 
+        /// <summary>
+        /// sets a hardware breakpoint at the given address
+        /// </summary>
+        /// <param name="targetAdder"></param>
+        /// <param name="threadId"></param>
         private void __SetBreakPoint(uint targetAdder, int threadId)
         {
             if (this.debugP == null)
@@ -2553,6 +2848,10 @@ namespace SwissArmyKnifeForMugen
             this.__ClearBreakPoint(this.debugTargetThread);
         }
 
+        /// <summary>
+        /// clears a set hardware breakpoint
+        /// </summary>
+        /// <param name="threadId"></param>
         private void __ClearBreakPoint(int threadId)
         {
             if (this.debugP == null)
@@ -2609,6 +2908,11 @@ namespace SwissArmyKnifeForMugen
             return num2;
         }
 
+        /// <summary>
+        /// main loop for the monitor function. this function is responsible for handling most data reads, updates, breakpoints, etc.
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void mugenWatcher_DoWork(object sender, DoWorkEventArgs e)
         {
             BackgroundWorker backgroundWorker = (BackgroundWorker)sender;
@@ -2659,30 +2963,44 @@ namespace SwissArmyKnifeForMugen
             int num18 = 0;
             int num19 = 2;
             NativeEvent nativeEvent1 = (NativeEvent)null;
+            // this is used in comparisons
             TriggerDatabase.TriggerValue_t triggerValueT = new TriggerDatabase.TriggerValue_t();
+            // will represent the thread we check triggers against/set bps in
             this.debugTargetThread = 0;
+            // this is false by default+we set to true if mugen is really active
             this._isMugenActive = false;
             while (!backgroundWorker.CancellationPending)
             {
+                // attach the debug process to the Mugen process if triggers are set up and the next command is START
                 if (this.debugP == null && this._triggerCheckTarget != null && (this._triggerCheckTarget.IsDirty() && this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_START))
                     this.debugP = this.debugControl.Attach(this.p.Id);
+                // check trigger values and apply breaks here if needed
+                // there may already be a hw break in effect/coming in, so it's identified in this block
                 if (this.debugP != null && !this._isDebugBreakMode)
                 {
                     NativeEvent nativeEvent2 = this.debugControl.WaitForDebugEvent(16);
+                    // handle bp event if it was found
                     if (nativeEvent2 != null)
                     {
+                        // safety check if it's our hw bp that activated
                         nativeEvent2.Process.HandleIfLoaderBreakpoint(nativeEvent2);
                         if (nativeEvent2 is ExceptionNativeEvent)
                         {
                             switch (nativeEvent2.m_union.Exception.ExceptionRecord.ExceptionCode)
                             {
+                                // these cases correspond to hardware bp?
                                 case ExceptionCode.STATUS_WOW64_SINGLESTEP:
                                 case ExceptionCode.STATUS_SINGLESTEP:
-                                    bool flag9 = false;
+                                    // check if read value type matches expected type + is in range/matching
+                                    bool triggerValueValid = false;
+                                    // read current value
                                     TriggerDatabase.TriggerValue_t triggerValue = this.GetTriggerValue(baseAddr);
+                                    // make sure not empty
                                     if (triggerValue != null && !triggerValueT.isEqual(triggerValue))
                                     {
                                         triggerValueT = triggerValue;
+                                        // used for verification, switching first on value type and then on operator.
+                                        // complicated but its mostly the same for each.
                                         switch (triggerValue.valueType)
                                         {
                                             case TriggerDatabase.ValueType.VALUE_INT:
@@ -2696,103 +3014,103 @@ namespace SwissArmyKnifeForMugen
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
                                                             if (triggerValue.GetMaskedInt32Value() == targetValueFrom1.GetInt32Value())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
                                                             if (triggerValue.GetMaskedInt32Value() != targetValueFrom1.GetInt32Value())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_LT:
                                                             if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_LE:
                                                             if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_GT:
                                                             if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_GE:
                                                             if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_FROM_TO:
                                                             if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() <= targetValueTo1.GetInt32Value())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_L_FROM_TO:
                                                             if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() <= targetValueTo1.GetInt32Value())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_G_FROM_TO:
                                                             if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() < targetValueTo1.GetInt32Value())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_LG_FROM_TO:
                                                             if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() < targetValueTo1.GetInt32Value())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_FROM_TO:
                                                             if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() > targetValueTo1.GetInt32Value())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_L_FROM_TO:
                                                             if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() > targetValueTo1.GetInt32Value())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_G_FROM_TO:
                                                             if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() >= targetValueTo1.GetInt32Value())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_LG_FROM_TO:
                                                             if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() >= targetValueTo1.GetInt32Value())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                     }
-                                                    if (flag9)
+                                                    if (triggerValueValid)
                                                     {
                                                         this._isDebugBreakMode = true;
                                                         nativeEvent1 = nativeEvent2;
@@ -2802,7 +3120,7 @@ namespace SwissArmyKnifeForMugen
                                                 }
                                                 if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_ANY)
                                                 {
-                                                    flag9 = true;
+                                                    triggerValueValid = true;
                                                     this._isDebugBreakMode = true;
                                                     nativeEvent1 = nativeEvent2;
                                                     break;
@@ -2818,103 +3136,103 @@ namespace SwissArmyKnifeForMugen
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
                                                             if ((double)triggerValue.GetSingleValue() == (double)targetValueFrom2.GetSingleValue())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
                                                             if ((double)triggerValue.GetSingleValue() != (double)targetValueFrom2.GetSingleValue())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_LT:
                                                             if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_LE:
                                                             if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_GT:
                                                             if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_GE:
                                                             if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_FROM_TO:
                                                             if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() <= (double)targetValueTo2.GetSingleValue())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_L_FROM_TO:
                                                             if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() <= (double)targetValueTo2.GetSingleValue())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_G_FROM_TO:
                                                             if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() < (double)targetValueTo2.GetSingleValue())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_LG_FROM_TO:
                                                             if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() < (double)targetValueTo2.GetSingleValue())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_FROM_TO:
                                                             if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() > (double)targetValueTo2.GetSingleValue())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_L_FROM_TO:
                                                             if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() > (double)targetValueTo2.GetSingleValue())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_G_FROM_TO:
                                                             if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() >= (double)targetValueTo2.GetSingleValue())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                         case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_LG_FROM_TO:
                                                             if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() >= (double)targetValueTo2.GetSingleValue())
                                                             {
-                                                                flag9 = true;
+                                                                triggerValueValid = true;
                                                                 break;
                                                             }
                                                             break;
                                                     }
-                                                    if (flag9)
+                                                    if (triggerValueValid)
                                                     {
                                                         this._isDebugBreakMode = true;
                                                         nativeEvent1 = nativeEvent2;
@@ -2924,7 +3242,7 @@ namespace SwissArmyKnifeForMugen
                                                 }
                                                 if (targetValueFrom2.valueType == TriggerDatabase.ValueType.VALUE_ANY)
                                                 {
-                                                    flag9 = true;
+                                                    triggerValueValid = true;
                                                     this._isDebugBreakMode = true;
                                                     nativeEvent1 = nativeEvent2;
                                                     break;
@@ -2933,7 +3251,8 @@ namespace SwissArmyKnifeForMugen
                                         }
                                     }
                                     uint p1Addr = this.GetP1Addr(baseAddr);
-                                    if (!flag9 || !flag6 || (p1Addr == 0U || this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_STOP))
+                                    // for un-stopping mugen from trigger breakpoints
+                                    if (!triggerValueValid || !flag6 || (p1Addr == 0U || this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_STOP))
                                     {
                                         this.debugControl.ContinueEvent(nativeEvent2, false);
                                         this.BeginInvoke((Action)(() => DebugForm.MainObj().DisableTriggerCheckResumeButton()));
@@ -2949,6 +3268,7 @@ namespace SwissArmyKnifeForMugen
                                         break;
                                     }
                                     break;
+                                // skip over this? since we wait for step event
                                 case ExceptionCode.STATUS_WOW64_BREAKPOINT:
                                 case ExceptionCode.STATUS_BREAKPOINT:
                                     this.debugControl.ContinueEvent(nativeEvent2, false);
@@ -2975,6 +3295,7 @@ namespace SwissArmyKnifeForMugen
                                     break;
                             }
                         }
+                        // boilerplate
                         else if (nativeEvent2 is CreateProcessDebugEvent)
                         {
                             this.debugControl.ContinueEvent(nativeEvent2);
@@ -2998,6 +3319,7 @@ namespace SwissArmyKnifeForMugen
                             this.debugControl.ContinueEvent(nativeEvent2);
                     }
                 }
+                // check the status of the trigger check/apply next command
                 else if (this.watchAddr == 0U)
                 {
                     Thread.Sleep(16);
@@ -3050,16 +3372,19 @@ namespace SwissArmyKnifeForMugen
                         }
                     }
                 }
+                // trigger checking for experimental/sw bps (compare value at watchAddr, no hardware bp involved)
                 if (this.watchAddr != 0U)
                 {
                     uint num20 = 0;
+                    // read current value of watchAddr
                     byte[] buf = new byte[4];
                     if (MugenWindow.MainObj().ReadMemory((IntPtr)(long)this.watchAddr, ref buf, 4U) > 0)
                         num20 = BitConverter.ToUInt32(buf, 0);
                     if ((int)this.watchInitVal != (int)num20)
                     {
-                        bool flag9 = false;
+                        bool isValidTrigger = false;
                         TriggerDatabase.TriggerValue_t triggerValue = this.GetTriggerValue(baseAddr);
+                        // everything below here is very similar to hw bp above
                         if (triggerValue != null && !triggerValueT.isEqual(triggerValue))
                         {
                             triggerValueT = triggerValue;
@@ -3076,103 +3401,103 @@ namespace SwissArmyKnifeForMugen
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
                                                 if (triggerValue.GetMaskedInt32Value() == targetValueFrom1.GetInt32Value())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
                                                 if (triggerValue.GetMaskedInt32Value() != targetValueFrom1.GetInt32Value())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_LT:
                                                 if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_LE:
                                                 if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_GT:
                                                 if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_GE:
                                                 if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_FROM_TO:
                                                 if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() <= targetValueTo1.GetInt32Value())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_L_FROM_TO:
                                                 if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() <= targetValueTo1.GetInt32Value())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_G_FROM_TO:
                                                 if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() < targetValueTo1.GetInt32Value())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_LG_FROM_TO:
                                                 if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() < targetValueTo1.GetInt32Value())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_FROM_TO:
                                                 if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() > targetValueTo1.GetInt32Value())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_L_FROM_TO:
                                                 if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() > targetValueTo1.GetInt32Value())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_G_FROM_TO:
                                                 if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() >= targetValueTo1.GetInt32Value())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_LG_FROM_TO:
                                                 if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() >= targetValueTo1.GetInt32Value())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                         }
-                                        if (flag9)
+                                        if (isValidTrigger)
                                         {
                                             this.SetPaused(true);
                                             break;
@@ -3195,103 +3520,103 @@ namespace SwissArmyKnifeForMugen
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
                                                 if ((double)triggerValue.GetSingleValue() == (double)targetValueFrom2.GetSingleValue())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
                                                 if ((double)triggerValue.GetSingleValue() != (double)targetValueFrom2.GetSingleValue())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_LT:
                                                 if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_LE:
                                                 if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_GT:
                                                 if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_GE:
                                                 if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_FROM_TO:
                                                 if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() <= (double)targetValueTo2.GetSingleValue())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_L_FROM_TO:
                                                 if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() <= (double)targetValueTo2.GetSingleValue())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_G_FROM_TO:
                                                 if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() < (double)targetValueTo2.GetSingleValue())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_LG_FROM_TO:
                                                 if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() < (double)targetValueTo2.GetSingleValue())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_FROM_TO:
                                                 if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() > (double)targetValueTo2.GetSingleValue())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_L_FROM_TO:
                                                 if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() > (double)targetValueTo2.GetSingleValue())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_G_FROM_TO:
                                                 if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() >= (double)targetValueTo2.GetSingleValue())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                             case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_LG_FROM_TO:
                                                 if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() >= (double)targetValueTo2.GetSingleValue())
                                                 {
-                                                    flag9 = true;
+                                                    isValidTrigger = true;
                                                     break;
                                                 }
                                                 break;
                                         }
-                                        if (flag9)
+                                        if (isValidTrigger)
                                         {
                                             this.SetPaused(true);
                                             break;
@@ -3306,13 +3631,16 @@ namespace SwissArmyKnifeForMugen
                                     break;
                             }
                         }
-                        if (flag9)
+                        // fire the experimental bp
+                        if (isValidTrigger)
                             this.BeginInvoke((Action)(() => DebugForm.MainObj().SetExpBPFired()))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
                     }
                 }
+                // load data + checks for whether Mugen is frozen, inactive, stuck, etc.
                 if (this.p != null && !this.p.HasExited)
                 {
                     DateTime now;
+                    // failsafe against unending RoundState=4, kills mugen if detected
                     if (num16 != 0L)
                     {
                         MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
@@ -3329,6 +3657,7 @@ namespace SwissArmyKnifeForMugen
                             }
                         }
                     }
+                    // other checks
                     if (this.p != null && !this.p.HasExited)
                     {
                         if (flag7 || !flag6 && this._isActivatedOnce)
@@ -3368,6 +3697,7 @@ namespace SwissArmyKnifeForMugen
                                     num17 = 0;
                             }
                         }
+                        // data loading segment?
                         if (baseAddr == 0U)
                             baseAddr = this.GetBaseAddr();
                         if (baseAddr != 0U && !this.IsDemo(baseAddr))
@@ -3705,6 +4035,7 @@ namespace SwissArmyKnifeForMugen
                                 num8 = 0;
                                 if (this._isDebugMode)
                                 {
+                                    // setup values for various debug form views
                                     switch (this._debugListMode)
                                     {
                                         case MugenWindow.DebugListMode.PLAYER_LIST_MODE:
@@ -3739,6 +4070,7 @@ namespace SwissArmyKnifeForMugen
                             }
                             if (flag1)
                             {
+                                // handling for long RoundState=0,4
                                 int roundState1 = this.GetRoundState(baseAddr);
                                 if (roundState1 == 0)
                                 {
@@ -3835,6 +4167,8 @@ namespace SwissArmyKnifeForMugen
                                             this.SetSkipMode(baseAddr, this._isSkipMode);
                                     }
                                 }
+                                // handler for checking if Mugen crashed or froze during RoundState=[1,3]
+                                // as well as data read/load/update
                                 int roundState2 = this.GetRoundState(baseAddr);
                                 if (roundState2 >= 1 && roundState2 <= 3 && (flag2 & flag3 && !this._isMugenCrashed))
                                 {
@@ -4057,6 +4391,7 @@ namespace SwissArmyKnifeForMugen
                                         }
                                     }
                                 }
+                                // win determination segment
                                 if (roundState2 >= 2 & flag6 | flag8)
                                 {
                                     if (roundState2 >= 3)
@@ -4276,6 +4611,10 @@ namespace SwissArmyKnifeForMugen
             this.BeginInvoke((Action)(() => DebugForm.MainObj().PostFinalizeTriggerCheck(this._mugen_type)));
         }
 
+        /// <summary>
+        /// added by Ziddia to consolidate async+threadsafe log writes
+        /// </summary>
+        /// <param name="v"></param>
         private void AsyncAppendLog(string v)
         {
             this.BeginInvoke(new Action(() => LogManager.MainObj().appendLog(v)));
@@ -4340,6 +4679,9 @@ namespace SwissArmyKnifeForMugen
             this.ResumeLayout(false);
         }
 
+        /// <summary>
+        /// enum of supported mugen versions
+        /// </summary>
         public enum MugenType_t
         {
             MUGEN_TYPE_NONE,
@@ -4360,6 +4702,7 @@ namespace SwissArmyKnifeForMugen
 
         private delegate bool EnumChildProc(IntPtr hWnd, int lParam);
 
+        // reference for setting flags in child thread
         [Flags]
         public enum ThreadAccessFlags
         {
@@ -4374,6 +4717,7 @@ namespace SwissArmyKnifeForMugen
             DIRECT_IMPERSONATION = 512, // 0x00000200
         }
 
+        // reference for context flags for debug registers???
         public enum CONTEXT_FLAGS : uint
         {
             CONTEXT_i386 = 65536, // 0x00010000
@@ -4388,6 +4732,7 @@ namespace SwissArmyKnifeForMugen
             CONTEXT_ALL = 65599, // 0x0001003F
         }
 
+        // seems windows internal, but not sure
         public struct FLOATING_SAVE_AREA
         {
             public uint ControlWord;
@@ -4402,6 +4747,7 @@ namespace SwissArmyKnifeForMugen
             public uint Cr0NpxState;
         }
 
+        // context of a process' registers
         public struct CONTEXT
         {
             public uint ContextFlags;
@@ -4525,6 +4871,9 @@ namespace SwissArmyKnifeForMugen
 
         private delegate void uiDelegate();
 
+        /// <summary>
+        /// modes to display the debug form in
+        /// </summary>
         public enum DebugListMode
         {
             NONE,
@@ -4533,6 +4882,9 @@ namespace SwissArmyKnifeForMugen
             PROJ_LIST_MODE,
         }
 
+        /// <summary>
+        /// possible owners of a proj (since Helpers cannot own)
+        /// </summary>
         public enum ProjOwner
         {
             P1,

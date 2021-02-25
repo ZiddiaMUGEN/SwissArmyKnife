@@ -4,6 +4,7 @@
 // MVID: 09478AD8-365C-4BF3-BEA1-B5785151259B
 // Assembly location: C:\Users\ziddi\Downloads\Swiss Army Knife 1.1 Conversion\Swiss Army Knife 1.1 Conversion\SAKnifeWM.exe
 
+using SwissArmyKnifeForMugen.Displays;
 using SwissArmyKnifeForMugen.Triggers;
 using System.IO;
 using System.Windows.Forms;
