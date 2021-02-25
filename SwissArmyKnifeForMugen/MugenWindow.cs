@@ -2717,7 +2717,15 @@ namespace SwissArmyKnifeForMugen
             }
             // if this is a GameTime based trigger, it's a custom monitor.
             if (offs == this._addr_db.GAMETIME_BASE_OFFSET)
+            {
+                // for NumExplod/NumTarget, pass the player addr.
+                // otherwise pass the root addr.
+                if (targetTrigger.triggerType == TriggerId.TRIGGER_NUMEXPLOD_ID
+                    || targetTrigger.triggerType == TriggerId.TRIGGER_NUMTARGET
+                    || targetTrigger.triggerType == TriggerId.TRIGGER_HASTARGET) 
+                    return GetTriggerValueEx(baseAddr, num);
                 return GetTriggerValueEx(baseAddr, rootAdder);
+            }
             // build an updated triggervalue
             TriggerDatabase.TriggerValue_t triggerValueT = new TriggerDatabase.TriggerValue_t();
             switch (TriggerDatabase.GetTriggerValueType(triggerType))
@@ -2771,12 +2779,128 @@ namespace SwissArmyKnifeForMugen
                     triggerValueT.valueType = TriggerDatabase.ValueType.VALUE_INT;
                     triggerValueT.SetInt32Value(numHelperID);
                     break;
+                case TriggerId.TRIGGER_NUMPROJ_ID:
+                    // count the number of helpers owned by the selected root, with a specified ID
+                    int numProjID = this.GetNumProjID(baseAddr, playerID, targetTrigger.index);
+                    triggerValueT.valueType = TriggerDatabase.ValueType.VALUE_INT;
+                    triggerValueT.SetInt32Value(numProjID);
+                    break;
+                case TriggerId.TRIGGER_NUMEXPLOD_ID:
+                    // count the number of helpers owned by the selected root, with a specified ID
+                    int numExplodID = this.GetNumExplodID(baseAddr, playerID, targetTrigger.index);
+                    triggerValueT.valueType = TriggerDatabase.ValueType.VALUE_INT;
+                    triggerValueT.SetInt32Value(numExplodID);
+                    break;
+                case TriggerId.TRIGGER_NUMTARGET:
+                    // count the number of targets a player owns
+                    int numTarget = this.GetNumTarget(baseAddr, playerID);
+                    triggerValueT.valueType = TriggerDatabase.ValueType.VALUE_INT;
+                    triggerValueT.SetInt32Value(numTarget);
+                    break;
+                case TriggerId.TRIGGER_HASTARGET:
+                    // count the number of targets a player owns
+                    bool hasTarget = this.GetHasTarget(baseAddr, playerID, targetTrigger.index);
+                    triggerValueT.valueType = TriggerDatabase.ValueType.VALUE_BOOL;
+                    triggerValueT.SetBoolValue(hasTarget);
+                    break;
                 default:
                     return (TriggerDatabase.TriggerValue_t)null;
             }
             return triggerValueT;
         }
 
+        private bool GetHasTarget(uint baseAddr, int playerID, int targetID)
+        {
+            // iterate all possible targets
+            for (int i = 0; i < 8; i++)
+            {
+                // get target
+                int currTarget = this.GetTarget(this.GetPlayerAddrFromId(baseAddr, playerID), i);
+                if (currTarget == targetID) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// gets number of targets owned by a specific player.
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="playerID"></param>
+        /// <returns></returns>
+        private int GetNumTarget(uint baseAddr, int playerID)
+        {
+            int num = 0;
+            // iterate all possible targets
+            for (int i = 0; i < 8; i++)
+            {
+                // get target
+                int targetID = this.GetTarget(this.GetPlayerAddrFromId(baseAddr, playerID), i);
+                // note: does not account for persistent targets becoming destroyed (i.e. CT)
+                // in which case targetID is non-zero and indeed the player holds a target,
+                // but the target does not really exist.
+                if (targetID != 0) num++;
+            }
+            return num;
+        }
+
+        /// <summary>
+        /// gets number of explods with a specific ID owned by a specific player.
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="playerID"></param>
+        /// <param name="explodID"></param>
+        /// <returns></returns>
+        private int GetNumExplodID(uint baseAddr, int playerID, int explodID)
+        {
+            // get explod list address
+            uint explodList = this.GetExplodListAdder(baseAddr);
+            int num = 0;
+            // iterate all proj
+            // TODO: 256 chosen arbitrarily and probably not good enough for cheap. find a way to find the max number.
+            for (uint i = 0; i < 256; i++)
+            {
+                // get proj
+                uint explodAdder = this.GetExplodAdder(explodList, i);
+                int explod = this.GetExplodId(explodAdder);
+                // sum if ID matches
+                if (explod == explodID && this.GetExplodOwnerId(explodAdder) == playerID) num++;
+            }
+            return num;
+        }
+
+        /// <summary>
+        /// gets number of proj with a specific ID owned by a specific root.
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="playerID"></param>
+        /// <param name="projID"></param>
+        /// <returns></returns>
+        private int GetNumProjID(uint baseAddr, int playerID, int projID)
+        {
+            // get proj base and list addresses
+            uint projBase = this.GetProjBaseAdder(this.GetPlayerAddrFromId(baseAddr, playerID));
+            uint projList = this.GetProjListAdder(projBase);
+            // get max proj count
+            int maxProj = this._GetInt32Data(projBase, this._addr_db.PROJ_MAX_PROJ_BASE_OFFSET);
+            int num = 0;
+            // iterate all proj
+            for (uint i = 0; i < maxProj; i++)
+            {
+                // get proj
+                uint projAdder = this.GetProjAdder(projList, i);
+                int proj = this.GetProjId(projAdder);
+                // sum if ID matches
+                if (proj == projID) num++;
+            }
+            return num;
+        }
+
+        /// <summary>
+        /// gets the number of helpers owned by a specific root.
+        /// </summary>
+        /// <param name="baseAddr"></param>
+        /// <param name="playerID"></param>
+        /// <returns></returns>
         private int GetNumHelper(uint baseAddr, int playerID)
         {
             // iterate 56 helpers
@@ -2791,7 +2915,7 @@ namespace SwissArmyKnifeForMugen
         }
 
         /// <summary>
-        /// helper function to get the number of Helpers with a given ID owned by a given player
+        /// helper function to get the number of Helpers with a given ID owned by a given root
         /// </summary>
         /// <param name="baseAddr"></param>
         /// <param name="playerID"></param>
@@ -3100,8 +3224,45 @@ namespace SwissArmyKnifeForMugen
                                         // complicated but its mostly the same for each.
                                         switch (triggerValue.valueType)
                                         {
-                                            case TriggerDatabase.ValueType.VALUE_INT:
+                                            case TriggerDatabase.ValueType.VALUE_BOOL:
                                                 TriggerDatabase.TriggerValue_t targetValueFrom1 = this._triggerCheckTarget.GetTargetValueFrom();
+                                                if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_BOOL)
+                                                {
+                                                    switch (this._triggerCheckTarget.GetTargetValueOpType())
+                                                    {
+                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
+                                                            if (triggerValue.GetBoolValue() == targetValueFrom1.GetBoolValue())
+                                                            {
+                                                                triggerValueValid = true;
+                                                                break;
+                                                            }
+                                                            break;
+                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
+                                                            if (triggerValue.GetBoolValue() != targetValueFrom1.GetBoolValue())
+                                                            {
+                                                                triggerValueValid = true;
+                                                                break;
+                                                            }
+                                                            break;
+                                                    }
+                                                    if (triggerValueValid)
+                                                    {
+                                                        this._isDebugBreakMode = true;
+                                                        nativeEvent1 = nativeEvent2;
+                                                        break;
+                                                    }
+                                                    break;
+                                                }
+                                                if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_ANY)
+                                                {
+                                                    triggerValueValid = true;
+                                                    this._isDebugBreakMode = true;
+                                                    nativeEvent1 = nativeEvent2;
+                                                    break;
+                                                }
+                                                break;
+                                            case TriggerDatabase.ValueType.VALUE_INT:
+                                                targetValueFrom1 = this._triggerCheckTarget.GetTargetValueFrom();
                                                 TriggerDatabase.TriggerValue_t targetValueTo1 = this._triggerCheckTarget.GetTargetValueTo();
                                                 triggerValue.mask = targetValueFrom1.mask;
                                                 if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_INT)
@@ -3487,8 +3648,42 @@ namespace SwissArmyKnifeForMugen
                             triggerValueT = triggerValue;
                             switch (triggerValue.valueType)
                             {
-                                case TriggerDatabase.ValueType.VALUE_INT:
+                                case TriggerDatabase.ValueType.VALUE_BOOL:
                                     TriggerDatabase.TriggerValue_t targetValueFrom1 = this._triggerCheckTarget.GetTargetValueFrom();
+                                    if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_BOOL)
+                                    {
+                                        switch (this._triggerCheckTarget.GetTargetValueOpType())
+                                        {
+                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
+                                                if (triggerValue.GetBoolValue() == targetValueFrom1.GetBoolValue())
+                                                {
+                                                    isValidTrigger = true;
+                                                    break;
+                                                }
+                                                break;
+                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
+                                                if (triggerValue.GetBoolValue() != targetValueFrom1.GetBoolValue())
+                                                {
+                                                    isValidTrigger = true;
+                                                    break;
+                                                }
+                                                break;
+                                        }
+                                        if (isValidTrigger)
+                                        {
+                                            this.SetPaused(true);
+                                            break;
+                                        }
+                                        break;
+                                    }
+                                    if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_ANY)
+                                    {
+                                        this.SetPaused(true);
+                                        break;
+                                    }
+                                    break;
+                                case TriggerDatabase.ValueType.VALUE_INT:
+                                    targetValueFrom1 = this._triggerCheckTarget.GetTargetValueFrom();
                                     TriggerDatabase.TriggerValue_t targetValueTo1 = this._triggerCheckTarget.GetTargetValueTo();
                                     triggerValue.mask = targetValueFrom1.mask;
                                     if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_INT)

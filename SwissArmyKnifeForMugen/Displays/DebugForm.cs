@@ -829,7 +829,12 @@ namespace SwissArmyKnifeForMugen.Displays
         (object) "SysVar( xxx )",
         (object) "Var( xxx )",
         (object) "NumHelper",
-        (object) "NumHelper( xxx )"
+        (object) "NumHelper( xxx )",
+        (object) "NumProjId( xxx )",
+        (object) "NumExplod( xxx )",
+        (object) "NumTarget",
+        (object) "HasTargetWithID( xxx )",
+        (object) "GetHitVar(damage)",
             });
             this.triggerComboBox.Location = new Point(58, 44);
             this.triggerComboBox.Name = "triggerComboBox";
@@ -2614,6 +2619,10 @@ namespace SwissArmyKnifeForMugen.Displays
                         trigger.triggerType = TriggerDatabase.TriggerId.TRIGGER_STATENO;
                     else if (input == "numhelper")
                         trigger.triggerType = TriggerDatabase.TriggerId.TRIGGER_NUMHELPER;
+                    else if (input == "numtarget")
+                        trigger.triggerType = TriggerDatabase.TriggerId.TRIGGER_NUMTARGET;
+                    else if (input == "gethitvar(damage)")
+                        trigger.triggerType = TriggerDatabase.TriggerId.TRIGGER_DAMAGE;
                     int result2;
                     if (trigger.triggerType == TriggerDatabase.TriggerId.TRIGGER_NONE && int.TryParse(Regex.Replace(input, "sysvar\\(\\s*([0-9]+)\\s*\\)", "$1"), out result2) && (result2 >= 0 && result2 <= 4))
                     {
@@ -2643,6 +2652,24 @@ namespace SwissArmyKnifeForMugen.Displays
                     {
                         trigger.triggerType = TriggerDatabase.TriggerId.TRIGGER_NUMHELPER_ID;
                         trigger.index = result6;
+                    }
+                    int result7;
+                    if (trigger.triggerType == TriggerDatabase.TriggerId.TRIGGER_NONE && int.TryParse(Regex.Replace(input, "numprojid\\(\\s*([0-9]+)\\s*\\)", "$1"), out result7) && (result7 >= 0 && result7 <= Int32.MaxValue))
+                    {
+                        trigger.triggerType = TriggerDatabase.TriggerId.TRIGGER_NUMPROJ_ID;
+                        trigger.index = result7;
+                    }
+                    int result8;
+                    if (trigger.triggerType == TriggerDatabase.TriggerId.TRIGGER_NONE && int.TryParse(Regex.Replace(input, "numexplod\\(\\s*([0-9]+)\\s*\\)", "$1"), out result8) && (result8 >= 0 && result8 <= Int32.MaxValue))
+                    {
+                        trigger.triggerType = TriggerDatabase.TriggerId.TRIGGER_NUMEXPLOD_ID;
+                        trigger.index = result8;
+                    }
+                    int result9;
+                    if (trigger.triggerType == TriggerDatabase.TriggerId.TRIGGER_NONE && int.TryParse(Regex.Replace(input, "hastargetwithid\\(\\s*([0-9]+)\\s*\\)", "$1"), out result9) && (result9 >= 0 && result9 <= Int32.MaxValue))
+                    {
+                        trigger.triggerType = TriggerDatabase.TriggerId.TRIGGER_HASTARGET;
+                        trigger.index = result9;
                     }
                 }
                 if (trigger.triggerType == TriggerDatabase.TriggerId.TRIGGER_NONE)
@@ -2681,6 +2708,17 @@ namespace SwissArmyKnifeForMugen.Displays
                                     triggerValueT1.SetInt32Value(result);
                                 }
                             }
+                            else if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_BOOL)
+                            {
+                                bool result;
+                                s = Regex.Replace(input, "\\=\\s*(true|false)", "$1");
+                                if (bool.TryParse(s, out result))
+                                {
+                                    target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_EQ);
+                                    triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_BOOL;
+                                    triggerValueT1.SetBoolValue(result);
+                                }
+                            }
                             else
                             {
                                 float result;
@@ -2703,6 +2741,17 @@ namespace SwissArmyKnifeForMugen.Displays
                                     target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ);
                                     triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_INT;
                                     triggerValueT1.SetInt32Value(result);
+                                }
+                            }
+                            else if (TriggerDatabase.GetTriggerValueType(triggerType) == TriggerDatabase.ValueType.VALUE_BOOL)
+                            {
+                                bool result;
+                                s = Regex.Replace(input, "\\!\\=\\s*(true|false)", "$1");
+                                if (bool.TryParse(s, out result))
+                                {
+                                    target.SetTargetValueOpType(TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ);
+                                    triggerValueT1.valueType = TriggerDatabase.ValueType.VALUE_BOOL;
+                                    triggerValueT1.SetBoolValue(result);
                                 }
                             }
                             else
