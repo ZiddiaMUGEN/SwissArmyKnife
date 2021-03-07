@@ -121,5 +121,11 @@
     <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\VarForm.resx" />
     <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\WelcomeForm.resx" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MugenWatcher\MugenWatcher.csproj">
+      <Project>{3731cfa9-c725-4f10-8159-603a1f1e7c52}</Project>
+      <Name>MugenWatcher</Name>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
