@@ -5,8 +5,10 @@
 // Assembly location: C:\Users\ziddi\Downloads\Swiss Army Knife 1.1 Conversion\Swiss Army Knife 1.1 Conversion\SAKnifeWM.exe
 
 using Microsoft.Samples.Debugging.Native;
+using MugenWatcher.Watcher;
+using MugenWatcher.Databases;
+using MugenWatcher.EnumTypes;
 using SwissArmyKnifeForMugen.Configs;
-using SwissArmyKnifeForMugen.Databases;
 using SwissArmyKnifeForMugen.Displays;
 using SwissArmyKnifeForMugen.Properties;
 using SwissArmyKnifeForMugen.Triggers;
@@ -21,6 +23,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 using static SwissArmyKnifeForMugen.Triggers.TriggerDatabase;
+using MugenWatcher.Utils;
 
 namespace SwissArmyKnifeForMugen
 {
@@ -29,8 +32,7 @@ namespace SwissArmyKnifeForMugen
     /// </summary>
     public class MugenWindow : Form
     {
-        // tracks Mugen type for current profile
-        private MugenWindow.MugenType_t _mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN;
+        private MugenProcessWatcher watcher;
         private NativePipeline debugControl = new NativePipeline();
         // currently-running trigger target
         private TriggerCheckTarget _triggerCheckTarget = new TriggerCheckTarget();
@@ -85,9 +87,6 @@ namespace SwissArmyKnifeForMugen
         public const int MAX_PLAYER_COUNT = 60;
         public const int MAX_EXPLOD_COUNT = 50;
         public const int MAX_PROJ_COUNT = 50;
-        // current address database
-        private MugenAddrDatabase _addr_db;
-        private Process p;
         // debugging Mugen process (used with trigger breakpoints)
         private NativeDbgProcess debugP;
         private int debugTargetThread;
@@ -151,6 +150,7 @@ namespace SwissArmyKnifeForMugen
 
         private MugenWindow()
         {
+            this.watcher = new MugenProcessWatcher();
             this.InitializeComponent();
             this.ClientSize = new Size(640, 480);
             if (!File.Exists(MainForm.GetFullPath("background.jpg")))
@@ -162,7 +162,7 @@ namespace SwissArmyKnifeForMugen
         /// currently-selected profile's Mugen version
         /// </summary>
         /// <returns></returns>
-        public MugenWindow.MugenType_t getMugenType() => this._mugen_type;
+        public MugenType_t getMugenType() => this.watcher.MugenVersion;
 
         /// <summary>
         /// set if a breakpoint is activated + mugen is frozen
@@ -317,23 +317,6 @@ namespace SwissArmyKnifeForMugen
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool ReadProcessMemory(
-          IntPtr hProcess,
-          IntPtr lpBaseAddress,
-          byte[] lpBuffer,
-          UIntPtr nSize,
-          out int lpNumberOfBytesRead);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool WriteProcessMemory(
-          IntPtr hProcess,
-          IntPtr lpBaseAddress,
-          byte[] lpBuffer,
-          uint nSize,
-          out UIntPtr lpNumberOfBytesWritten);
-
         [DllImport("kernel32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool GetThreadContext(IntPtr hThread, ref MugenWindow.CONTEXT lpContext);
@@ -410,8 +393,6 @@ namespace SwissArmyKnifeForMugen
 
         public int GetWorkingProfileId() => this._workingProfileId;
 
-        public Process getMugenProcess() => this.p == null || !this.p.HasExited ? this.p : (Process)null;
-
         public void DelayedActivate()
         {
             this.activateTimer.Enabled = true;
@@ -465,26 +446,18 @@ namespace SwissArmyKnifeForMugen
             while (this.mugenWatcher.IsBusy)
             {
                 this.mugenWatcher.CancelAsync();
-                if (this.p != null)
-                {
-                    if (!this.p.HasExited)
-                        this.p.Kill();
-                    this.p.WaitForExit(2000);
-                    this.p.Close();
-                    this.p.Dispose();
-                    this.p = (Process)null;
-                }
+                this.watcher.KillAndAwaitMugenProcessEnd();
                 Application.DoEvents();
             }
             // doublecheck the old process has died
-            if (this.p == null || this.p.HasExited)
+            if (!this.watcher.CheckMugenProcessActive())
             {
                 this._isMugenHidden = false;
                 this._isActivated = false;
                 this._isActivatedOnce = false;
                 this._isShownOnce = false;
                 // type is determined on launch
-                this._mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_NONE;
+                this.watcher.ResetMugenVersion();
                 MugenProfile profile = ProfileManager.MainObj().GetProfile(profileNo);
                 if (profile == null)
                     return false;
@@ -498,35 +471,10 @@ namespace SwissArmyKnifeForMugen
                     return false;
                 }
                 // determine the actual MugenType_t (ie version)
-                this._mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN;
-                FileVersionInfo versionInfo = FileVersionInfo.GetVersionInfo(profile.GetMugenExePath());
-                if (versionInfo != null)
+                if (!this.watcher.DetectMugenVersion(FileVersionInfo.GetVersionInfo(profile.GetMugenExePath())))
                 {
-                    if (string.Compare("M.U.G.E.N", versionInfo.ProductName, true) == 0)
-                    {
-                        if (versionInfo.FileMajorPart == 1 && versionInfo.FileMinorPart == 0)
-                            this._mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10;
-                        else if (versionInfo.FileMajorPart == 1 && versionInfo.FileMinorPart == 1 && versionInfo.FileVersion == "1.1.0 Alpha 4")
-                            this._mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4;
-                        else if (versionInfo.FileMajorPart == 1 && versionInfo.FileMinorPart == 1 && versionInfo.FileVersion == "1.1.0 Beta 1 P1")
-                        {
-                            this._mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11B1;
-                        }
-                        else
-                        {
-                            this._mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_NONE;
-                            if (LogManager.MainObj() != null)
-                                AsyncAppendLog("Incompatible MUGEN version.");
-                            return false;
-                        }
-                    }
-                    else if (versionInfo.FileVersion != null)
-                    {
-                        this._mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_NONE;
-                        if (LogManager.MainObj() != null)
-                            AsyncAppendLog("The specified exe file is not mugen.");
-                        return false;
-                    }
+                    if (LogManager.MainObj() != null)
+                        AsyncAppendLog("There is an issue with the defined MUGEN executable for the current profile.");
                 }
                 // #3: disable fullscreen
                 // backup mugen config
@@ -552,47 +500,42 @@ namespace SwissArmyKnifeForMugen
                 startInfo.CreateNoWindow = false;
                 startInfo.UseShellExecute = false;
                 startInfo.WindowStyle = ProcessWindowStyle.Minimized;
-                string currentDirectory = Environment.CurrentDirectory;
-                Environment.CurrentDirectory = startInfo.WorkingDirectory;
                 try
                 {
                     // launch the base process
-                    this.p = Process.Start(startInfo);
-                    Environment.CurrentDirectory = currentDirectory;
+                    this.watcher.LaunchMugenProcess(startInfo);
                 }
                 catch
                 {
-                    this._mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_NONE;
-                    Environment.CurrentDirectory = currentDirectory;
                     if (LogManager.MainObj() != null)
                         AsyncAppendLog("Failed to load the exe file.");
                     return false;
                 }
             }
             // confirm we launched successfully
-            if (this.p != null && !this.p.HasExited)
+            if (this.watcher.CheckMugenProcessActive())
             {
-                this.p.WaitForInputIdle(5000);
+                this.watcher.GetMugenProcess().WaitForInputIdle(5000);
                 int num1 = 200;
                 // waiting for the process to launch the Mugen window
-                while (num1-- >= 0 && this.p != null && !this.p.HasExited && this.p.MainWindowHandle.Equals((object)IntPtr.Zero))
+                while (num1-- >= 0 && this.watcher.CheckMugenProcessActive() && !this.watcher.CheckMugenWindowStatus())
                 {
                     Thread.Sleep(50);
-                    this.p.Refresh();
+                    this.watcher.GetMugenProcess().Refresh();
                     Application.DoEvents();
                 }
                 // failsafe, may have crashed pre-load
-                if (this.p == null || this.p.HasExited)
+                if (!this.watcher.CheckMugenProcessActive())
                 {
-                    this._mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_NONE;
-                    if (this.p != null)
-                        this.p.Dispose();
-                    this.p = (Process)null;
+                    this.watcher.ResetMugenVersion();
+                    if (this.watcher.GetMugenProcess() != null)
+                        this.watcher.GetMugenProcess().Dispose();
+                    this.watcher.DestroyMugenProcess();
                     if (LogManager.MainObj() != null)
                         AsyncAppendLog("Failed to load the exe file.");
                     return false;
                 }
-                if (this.p.MainWindowHandle.Equals((object)IntPtr.Zero))
+                if (!this.watcher.CheckMugenWindowStatus())
                 {
                     if (LogManager.MainObj() != null)
                         AsyncAppendLog("Failed to load the exe file.");
@@ -601,7 +544,7 @@ namespace SwissArmyKnifeForMugen
                 }
                 StringBuilder lpString = new StringBuilder(4132);
                 // doublecheck the window looks good
-                if (!this.p.MainWindowHandle.Equals((object)IntPtr.Zero) && MugenWindow.GetWindowText(this.p.MainWindowHandle, lpString, lpString.Capacity) != 0)
+                if (this.watcher.CheckMugenWindowStatus() && MugenWindow.GetWindowText(this.watcher.GetMugenWindowHandle(), lpString, lpString.Capacity) != 0)
                 {
                     string lower = lpString.ToString().ToLower();
                     if (!lower.Contains("mugen") && !lower.Contains("m.u.g.e.n"))
@@ -613,19 +556,19 @@ namespace SwissArmyKnifeForMugen
                     }
                 }
                 // capture the Mugen window and force it into our container
-                uint unValue = (uint)((int)MugenWindow.GetWindowLong(this.p.MainWindowHandle, -16) & -12582913 & int.MaxValue);
-                if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10 || this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4)
+                uint unValue = (uint)((int)MugenWindow.GetWindowLong(this.watcher.GetMugenWindowHandle(), -16) & -12582913 & int.MaxValue);
+                if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN10 || this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN11A4)
                 {
-                    int num2 = (int)MugenWindow.SetParent(this.p.MainWindowHandle, this.backgroundBox.Handle);
-                    int num3 = (int)MugenWindow.SetWindowLong(this.p.MainWindowHandle, -16, unValue);
-                    MugenWindow.SetWindowPos(this.p.MainWindowHandle, 0, 0, 0, 640, 480, 68);
-                    int num4 = (int)MugenWindow.SetParent(this.p.MainWindowHandle, this.backgroundBox.Handle);
+                    int num2 = (int)MugenWindow.SetParent(this.watcher.GetMugenWindowHandle(), this.backgroundBox.Handle);
+                    int num3 = (int)MugenWindow.SetWindowLong(this.watcher.GetMugenWindowHandle(), -16, unValue);
+                    MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, 640, 480, 68);
+                    int num4 = (int)MugenWindow.SetParent(this.watcher.GetMugenWindowHandle(), this.backgroundBox.Handle);
                 }
                 else
                 {
-                    int num2 = (int)MugenWindow.SetWindowLong(this.p.MainWindowHandle, -16, unValue);
-                    int num3 = (int)MugenWindow.SetParent(this.p.MainWindowHandle, this.backgroundBox.Handle);
-                    MugenWindow.SetWindowPos(this.p.MainWindowHandle, 0, 0, 0, 640, 480, 68);
+                    int num2 = (int)MugenWindow.SetWindowLong(this.watcher.GetMugenWindowHandle(), -16, unValue);
+                    int num3 = (int)MugenWindow.SetParent(this.watcher.GetMugenWindowHandle(), this.backgroundBox.Handle);
+                    MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, 640, 480, 68);
                 }
                 // set predetermined flags based on profile setup
                 MugenProfile profile = ProfileManager.MainObj().GetProfile(profileNo);
@@ -634,26 +577,25 @@ namespace SwissArmyKnifeForMugen
                     DebugForm.MainObj().SetSpeedModeCheckBox(profile.IsSpeedMode(), true);
                     DebugForm.MainObj().SetSkipModeCheckBox(profile.IsSkipMode());
                     DebugForm.MainObj().SetDebugModeCheckBox(profile.IsDebugMode(), true);
-                    DebugForm.MainObj().PreInitTriggerCheck(this._mugen_type); // in case of saved triggers
+                    DebugForm.MainObj().PreInitTriggerCheck(this.watcher.MugenVersion); // in case of saved triggers
                     this._workingProfileId = profile.GetProfileNo();
                 }
                 this._isMugenFrozen = false;
                 this._isGameQuitted = false;
                 this._isMugenCrashed = false;
-                this._addr_db = MugenAddrDatabase.GetAddrDatabase(this._mugen_type);
                 // launch monitor
                 if (!this.mugenWatcher.IsBusy)
                     this.mugenWatcher.RunWorkerAsync();
                 return true;
             }
             // failure case
-            this._mugen_type = MugenWindow.MugenType_t.MUGEN_TYPE_NONE;
+            this.watcher.ResetMugenVersion();
             return false;
         }
 
-        public void AttachMugen() => MugenWindow.AttachThreadInput(MugenWindow.GetWindowThreadProcessId(this.p.MainWindowHandle, IntPtr.Zero), MugenWindow.GetWindowThreadProcessId(this.Handle, IntPtr.Zero), true);
+        public void AttachMugen() => MugenWindow.AttachThreadInput(MugenWindow.GetWindowThreadProcessId(this.watcher.GetMugenWindowHandle(), IntPtr.Zero), MugenWindow.GetWindowThreadProcessId(this.Handle, IntPtr.Zero), true);
 
-        public void DettachMugen() => MugenWindow.AttachThreadInput(MugenWindow.GetWindowThreadProcessId(this.p.MainWindowHandle, IntPtr.Zero), MugenWindow.GetWindowThreadProcessId(this.Handle, IntPtr.Zero), false);
+        public void DettachMugen() => MugenWindow.AttachThreadInput(MugenWindow.GetWindowThreadProcessId(this.watcher.GetMugenWindowHandle(), IntPtr.Zero), MugenWindow.GetWindowThreadProcessId(this.Handle, IntPtr.Zero), false);
 
         /// <summary>
         /// show mugen + do not unpause (some mugens unpause on focus/unfocus)
@@ -668,17 +610,17 @@ namespace SwissArmyKnifeForMugen
 
         public void HideMugen()
         {
-            if (this.p == null)
+            if (this.watcher.GetMugenProcess() == null)
                 return;
-            if (MugenWindow.IsWindowVisible(this.p.MainWindowHandle))
+            if (MugenWindow.IsWindowVisible(this.watcher.GetMugenWindowHandle()))
             {
                 this._isMugenHidden = true;
-                MugenWindow.SetWindowPos(this.p.MainWindowHandle, 0, 0, 0, 640, 480, 16532);
+                MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, 640, 480, 16532);
             }
             else
             {
                 this._isMugenHidden = false;
-                MugenWindow.SetWindowPos(this.p.MainWindowHandle, 0, 0, 0, 640, 480, 16532);
+                MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, 640, 480, 16532);
             }
         }
 
@@ -697,7 +639,7 @@ namespace SwissArmyKnifeForMugen
         {
             // stop trigger breakpoint freeze
             this.stopDebugBreak();
-            if (this.p != null)
+            if (this.watcher.GetMugenProcess() != null)
             {
                 // kill the monitor process
                 while (this.mugenWatcher.IsBusy)
@@ -705,25 +647,20 @@ namespace SwissArmyKnifeForMugen
                     this.mugenWatcher.CancelAsync();
                     Application.DoEvents();
                 }
-                if (this.p != null)
+                if (this.watcher.GetMugenProcess() != null)
                 {
-                    if (!this.p.HasExited)
+                    if (!this.watcher.GetMugenProcess().HasExited)
                     {
                         if (!this._isDebugBreakMode)
                         {
                             // confirmation that the process is ready to be killed
-                            if (this.p.Responding)
+                            if (this.watcher.GetMugenProcess().Responding)
                             {
-                                MugenWindow.SetForegroundWindow(this.p.MainWindowHandle);
-                                this.p.CloseMainWindow();
-                                if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10)
+                                MugenWindow.SetForegroundWindow(this.watcher.GetMugenWindowHandle());
+                                this.watcher.GetMugenProcess(isUnsafe: true).CloseMainWindow();
+                                if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN10)
                                 {
-                                    this.p.WaitForExit(2000);
-                                    if (!this.p.HasExited)
-                                    {
-                                        this.p.Kill();
-                                        this.p.WaitForExit(2000);
-                                    }
+                                    this.watcher.KillAndAwaitMugenProcessEnd();
                                 }
                                 else
                                 {
@@ -741,39 +678,28 @@ namespace SwissArmyKnifeForMugen
                                         else
                                             break;
                                     }
-                                    while (hWnd == this.p.MainWindowHandle || lpdwProcessId != this.p.Id);
-                                    if (hWnd != IntPtr.Zero && lpdwProcessId == this.p.Id)
+                                    while (hWnd == this.watcher.GetMugenWindowHandle() || lpdwProcessId != this.watcher.GetMugenProcess(isUnsafe: true).Id);
+                                    if (hWnd != IntPtr.Zero && lpdwProcessId == this.watcher.GetMugenProcess().Id)
                                     {
                                         MugenWindow.PostMessage(hWnd, 273U, (IntPtr)6, (IntPtr)1967936);
-                                        this.p.WaitForExit(2000);
-                                        if (!this.p.HasExited)
-                                        {
-                                            this.p.Kill();
-                                            this.p.WaitForExit(2000);
-                                        }
+                                        this.watcher.KillAndAwaitMugenProcessEnd();
                                     }
-                                    else if (!this.p.HasExited)
+                                    else if (!this.watcher.GetMugenProcess(isUnsafe: true).HasExited)
                                     {
-                                        this.p.Kill();
-                                        this.p.WaitForExit(2000);
+                                        this.watcher.KillAndAwaitMugenProcessEnd();
                                     }
                                 }
                             }
-                            else if (!this.p.HasExited)
+                            else if (!this.watcher.GetMugenProcess().HasExited)
                             {
-                                this.p.Kill();
-                                this.p.WaitForExit(2000);
+                                this.watcher.KillAndAwaitMugenProcessEnd();
                             }
                         }
-                        else if (!this.p.HasExited)
+                        else if (!this.watcher.GetMugenProcess().HasExited)
                         {
-                            this.p.Kill();
-                            this.p.WaitForExit(2000);
+                            this.watcher.KillAndAwaitMugenProcessEnd();
                         }
                     }
-                    this.p.Close();
-                    this.p.Dispose();
-                    this.p = (Process)null;
                 }
             }
             else
@@ -799,17 +725,15 @@ namespace SwissArmyKnifeForMugen
 
         private void KillGracefully()
         {
-            if (this.p == null || this.p.HasExited)
+            if (!this.watcher.CheckMugenProcessActive())
                 return;
-            if (this.p.Responding)
+            if (this.watcher.GetMugenProcess().Responding)
             {
                 this.InjectESC();
-                if (this.p.WaitForExit(2000))
+                if (this.watcher.GetMugenProcess().WaitForExit(2000))
                     return;
-                this.p.Kill();
             }
-            else
-                this.p.Kill();
+            this.watcher.GetMugenProcess().Kill();
         }
 
         public void ResetNumOfGames() => this.numOfGames = 0;
@@ -860,11 +784,11 @@ namespace SwissArmyKnifeForMugen
             bool result = false;
             // flag is set elsewhere (by monitor)
             if (this._isMugenCrashed)
-                return this.p == null || this.p.HasExited;
-            if (this.p != null)
+                return this.watcher.CheckMugenProcessActive();
+            if (this.watcher.GetMugenProcess() != null)
             {
                 MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                if (this.p.HasExited)
+                if (this.watcher.GetMugenProcess().HasExited)
                     result = false;
                 // if it's frozen, we treat as an error/crash and prompt to close
                 else if (this._isMugenFrozen)
@@ -885,7 +809,7 @@ namespace SwissArmyKnifeForMugen
                         if (!mainWindowHandle.Equals((object)IntPtr.Zero))
                         {
                             mainWindowHandle = process.MainWindowHandle;
-                            if (!mainWindowHandle.Equals((object)this.p.MainWindowHandle) && MugenWindow.GetWindowText(process.MainWindowHandle, lpString, lpString.Capacity) != 0)
+                            if (!mainWindowHandle.Equals((object)this.watcher.GetMugenWindowHandle()) && MugenWindow.GetWindowText(process.MainWindowHandle, lpString, lpString.Capacity) != 0)
                             {
                                 string lower = lpString.ToString().ToLower();
                                 if (lower.Contains("mugen") && lower.Contains(".exe"))
@@ -907,7 +831,7 @@ namespace SwissArmyKnifeForMugen
                     }
                     else if (!foundMugen)
                     {
-                        if (this.p != null && !this.p.HasExited)
+                        if (this.watcher.CheckMugenProcessActive())
                         {
                             // prompt to kill the process
                             if (MessageBox.Show("mugen has frozen. Would you like to terminate the process?", "Error", MessageBoxButtons.YesNo) == DialogResult.Yes)
@@ -933,7 +857,7 @@ namespace SwissArmyKnifeForMugen
                    {
                        int lpdwProcessId = 0;
                        int windowThreadProcessId = (int)MugenWindow.GetWindowThreadProcessId(hWnd, out lpdwProcessId);
-                       if (this.p != null && !this.p.HasExited && this.p.Id == lpdwProcessId)
+                       if (this.watcher.CheckMugenProcessActive() && this.watcher.GetMugenProcess().Id == lpdwProcessId)
                        {
                            StringBuilder lpString = new StringBuilder(4132);
                            if (MugenWindow.IsWindowVisible(hWnd) && MugenWindow.GetWindowText(hWnd, lpString, lpString.Capacity) != 0)
@@ -984,7 +908,7 @@ namespace SwissArmyKnifeForMugen
 
         public void ActivateEx()
         {
-            if (this.p == null || this.p.HasExited)
+            if (!this.watcher.CheckMugenProcessActive())
                 return;
             int lpdwProcessId;
             int windowThreadProcessId = (int)MugenWindow.GetWindowThreadProcessId(MugenWindow.GetForegroundWindow(), out lpdwProcessId);
@@ -1026,54 +950,9 @@ namespace SwissArmyKnifeForMugen
         public void SendKey(char c)
         {
             uint Msg = 258;
-            if (this.p == null || this.p.HasExited)
+            if (!this.watcher.CheckMugenProcessActive())
                 return;
-            MugenWindow.SendMessage1(this.p.MainWindowHandle, Msg, (int)c, 0);
-        }
-
-        /// <summary>
-        /// directly reads memory from the Mugen process in a safe manner, writes to a buffer, and returns the size.
-        /// </summary>
-        /// <param name="addr">address to read from</param>
-        /// <param name="buf">buffer to write to</param>
-        /// <param name="bufLen">length of the buffer</param>
-        /// <returns></returns>
-        public int ReadMemory(IntPtr addr, ref byte[] buf, uint bufLen)
-        {
-            if (this.p == null || this.p.HasExited)
-                return 0;
-            int lpNumberOfBytesRead = 0;
-            try
-            {
-                if (!MugenWindow.ReadProcessMemory(this.p.Handle, addr, buf, (UIntPtr)bufLen, out lpNumberOfBytesRead))
-                    return 0;
-            }
-            catch
-            {
-                return 0;
-            }
-            return lpNumberOfBytesRead;
-        }
-
-        /// <summary>
-        /// writes values in a buffer to an address in memory
-        /// </summary>
-        /// <param name="addr"></param>
-        /// <param name="buf"></param>
-        /// <param name="bufLen"></param>
-        public void WriteMemory(IntPtr addr, ref byte[] buf, uint bufLen)
-        {
-            if (this.p == null)
-                return;
-            if (this.p.HasExited)
-                return;
-            try
-            {
-                MugenWindow.WriteProcessMemory(this.p.Handle, addr, buf, bufLen, out UIntPtr _);
-            }
-            catch
-            {
-            }
+            MugenWindow.SendMessage1(this.watcher.GetMugenWindowHandle(), Msg, (int)c, 0);
         }
 
         private void MugenWindow_FormClosing(object sender, FormClosingEventArgs e) => this.CloseMugen();
@@ -1082,11 +961,11 @@ namespace SwissArmyKnifeForMugen
 
         private void MugenWindow_Activated(object sender, EventArgs e)
         {
-            if (this.p == null || this.p.HasExited)
+            if (!this.watcher.CheckMugenProcessActive())
                 return;
-            MugenWindow.SetWindowPos(this.p.MainWindowHandle, 0, 0, 0, 640, 480, 16400);
+            MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, 640, 480, 16400);
             if (!this._ignoreUnPauseRequestOnce)
-                this.SetForegroundWindowEx(this.p.MainWindowHandle);
+                this.SetForegroundWindowEx(this.watcher.GetMugenWindowHandle());
             this._ignoreUnPauseRequestOnce = false;
         }
 
@@ -1099,7 +978,7 @@ namespace SwissArmyKnifeForMugen
 
         private void backgroundBox_Paint(object sender, PaintEventArgs e)
         {
-            Process mugenProcess = MugenWindow.MainObj().getMugenProcess();
+            Process mugenProcess = MugenWindow.MainObj().watcher.GetMugenProcess();
             if (mugenProcess == null || mugenProcess.HasExited)
                 return;
             if (MugenWindow.IsWindowVisible(mugenProcess.MainWindowHandle))
@@ -1107,7 +986,7 @@ namespace SwissArmyKnifeForMugen
                 if (this._isShownOnce)
                     return;
                 this._isShownOnce = true;
-                if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10)
+                if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN10)
                 {
                     if (MugenWindow.GetParent(mugenProcess.MainWindowHandle) != this.backgroundBox.Handle)
                     {
@@ -1164,19 +1043,6 @@ namespace SwissArmyKnifeForMugen
         }
 
         /// <summary>
-        /// fetch the base address of the Mugen game structure from [MUGEN_POINTER_BASE_OFFSET]
-        /// </summary>
-        /// <returns></returns>
-        private uint GetBaseAddr()
-        {
-            uint num = 0;
-            byte[] buf = new byte[4];
-            if (MugenWindow.MainObj().ReadMemory((IntPtr)(long)this._addr_db.MUGEN_POINTER_BASE_OFFSET, ref buf, 4U) > 0)
-                num = BitConverter.ToUInt32(buf, 0);
-            return num;
-        }
-
-        /// <summary>
         /// indicates if experimental breakpoints are enabled
         /// </summary>
         /// <returns></returns>
@@ -1191,88 +1057,15 @@ namespace SwissArmyKnifeForMugen
             this.WatchInitVal = 0U;
         }
 
-        public bool IsPaused() => this._addr_db is Mugen11A4DB || this._addr_db is Mugen11B1DB ? (uint)this._GetInt32Data(this.GetBaseAddr(), this._addr_db.PAUSE_ADDR) > 0U : (uint)this._GetInt32Data(0U, this._addr_db.PAUSE_ADDR) > 0U;
+        private void SetRoundState(uint baseAddr, int state) => this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.ROUND_STATE_BASE_OFFSET, state);
 
-        private bool IsDemo(uint baseAddr) => (uint)this._GetInt32Data(baseAddr, this._addr_db.DEMO_BASE_OFFSET) > 0U;
+        private void SetRoundNo(uint baseAddr, int num) => this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.ROUND_NO_BASE_OFFSET, num);
 
-        private bool IsMugenActive(uint baseAddr) => (uint)this._GetInt32Data(baseAddr, this._addr_db.MUGEN_ACTIVE_BASE_OFFSET) > 0U;
+        private void SetTeam1WinCount(uint baseAddr, int value) => this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.TEAM_1_WIN_COUNT_BASE_OFFSET, value);
 
-        private bool IsSpeedMode(uint baseAddr) => (uint)this._GetInt32Data(baseAddr, this._addr_db.SPEED_MODE_BASE_OFFSET) > 0U;
+        private void SetTeam2WinCount(uint baseAddr, int value) => this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.TEAM_2_WIN_COUNT_BASE_OFFSET, value);
 
-        private bool IsSkipMode(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.SKIP_MODE_BASE_OFFSET) > 0;
-
-        private int GetSkipFrames(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.SKIP_MODE_BASE_OFFSET);
-
-        private bool IsDebugMode(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.DEBUG_MODE_BASE_OFFSET) != 0 && (uint)this._GetInt32Data(baseAddr, this._addr_db.DEBUG_TARGET_BASE_OFFSET) > 0U;
-
-        private int GetDebugTargetNo(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.DEBUG_TARGET_BASE_OFFSET);
-
-        private uint GetGametime(uint baseAddr) => (uint)this._GetInt32Data(baseAddr, this._addr_db.GAMETIME_BASE_OFFSET);
-
-        private float GetScreenX(uint baseAddr) => (float)this._GetInt32Data(baseAddr, this._addr_db.SCREEN_X_BASE_OFFSET);
-
-        private float GetScreenY(uint baseAddr) => (float)this._GetInt32Data(baseAddr, this._addr_db.SCREEN_Y_BASE_OFFSET);
-
-        private int GetRoundState(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.ROUND_STATE_BASE_OFFSET);
-
-        private void SetRoundState(uint baseAddr, int state) => this._SetInt32Data(baseAddr, this._addr_db.ROUND_STATE_BASE_OFFSET, state);
-
-        private int GetRoundNo(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.ROUND_NO_BASE_OFFSET);
-
-        private void SetRoundNo(uint baseAddr, int num) => this._SetInt32Data(baseAddr, this._addr_db.ROUND_NO_BASE_OFFSET, num);
-
-        private int GetRoundTime(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.ROUND_TIME_BASE_OFFSET);
-
-        private int GetRoundNoOfMatch(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.ROUND_NO_OF_MATCH_TIME_BASE_OFFSET);
-
-        private bool IsTurnsMode(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.TURNS_MODE_BASE_OFFSET) == 0;
-
-        private bool DoesExist(uint playerAddr) => (uint)this._GetInt32Data(playerAddr, this._addr_db.EXIST_PLAYER_OFFSET) > 0U;
-
-        private bool IsTeam1Win(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.TEAM_WIN_BASE_OFFSET) == 1;
-
-        private bool IsTeam1WinKO(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.TEAM_WIN_BASE_OFFSET) == 1 && this._GetInt32Data(baseAddr, this._addr_db.TEAM_WIN_KO_BASE_OFFSET) == 1;
-
-        private bool IsTeam2Win(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.TEAM_WIN_BASE_OFFSET) == 2;
-
-        private bool IsTeam2WinKO(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.TEAM_WIN_BASE_OFFSET) == 2 && this._GetInt32Data(baseAddr, this._addr_db.TEAM_WIN_KO_BASE_OFFSET) == 1;
-
-        private int GetTeam1WinCount(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.TEAM_1_WIN_COUNT_BASE_OFFSET);
-
-        private int GetTeam2WinCount(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.TEAM_2_WIN_COUNT_BASE_OFFSET);
-
-        private int GetDrawGameCount(uint baseAddr) => this._GetInt32Data(baseAddr, this._addr_db.DRAW_GAME_COUNT_BASE_OFFSET);
-
-        private void SetTeam1WinCount(uint baseAddr, int value) => this._SetInt32Data(baseAddr, this._addr_db.TEAM_1_WIN_COUNT_BASE_OFFSET, value);
-
-        private void SetTeam2WinCount(uint baseAddr, int value) => this._SetInt32Data(baseAddr, this._addr_db.TEAM_2_WIN_COUNT_BASE_OFFSET, value);
-
-        private void SetDrawGameCount(uint baseAddr, int value) => this._SetInt32Data(baseAddr, this._addr_db.DRAW_GAME_COUNT_BASE_OFFSET, value);
-
-        /// <summary>
-        /// gets a player address from the Mugen base addr and an offset.
-        /// <br/>for p1, this would be [[MUGEN_POINTER_BASE_OFFSET] + PLAYER_1_BASE_OFFSET]
-        /// <br/>for subsequent players/helpers, add 4 per
-        /// </summary>
-        /// <param name="baseAddr"></param>
-        /// <param name="offset"></param>
-        /// <returns></returns>
-        private uint _GetPlayerAddr(uint baseAddr, uint offset)
-        {
-            uint num = 0;
-            byte[] buf = new byte[4];
-            if (MugenWindow.MainObj().ReadMemory((IntPtr)(long)(baseAddr + offset), ref buf, 4U) > 0)
-                num = BitConverter.ToUInt32(buf, 0);
-            return num;
-        }
-
-        private uint GetP1Addr(uint baseAddr) => this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET);
-
-        private uint GetP2Addr(uint baseAddr) => this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET + 4U);
-
-        private uint GetP3Addr(uint baseAddr) => this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET + 8U);
-
-        private uint GetP4Addr(uint baseAddr) => this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET + 12U);
+        private void SetDrawGameCount(uint baseAddr, int value) => this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.DRAW_GAME_COUNT_BASE_OFFSET, value);
 
         /// <summary>
         /// gets a player info address from a player address
@@ -1282,11 +1075,7 @@ namespace SwissArmyKnifeForMugen
         /// <returns></returns>
         private uint GetPlayerInfoAdder(uint playerAddr)
         {
-            uint num = 0;
-            byte[] buf = new byte[4];
-            if (playerAddr != 0U && MugenWindow.MainObj().ReadMemory((IntPtr)(long)playerAddr, ref buf, 4U) > 0)
-                num = BitConverter.ToUInt32(buf, 0);
-            return num;
+            return (uint) PlayerUtils.GetPlayerInfoAddress(this.watcher, playerAddr);
         }
 
         /// <summary>
@@ -1296,17 +1085,10 @@ namespace SwissArmyKnifeForMugen
         /// <returns></returns>
         private uint GetExplodListAdder(uint baseAddr)
         {
-            uint num1 = 0;
-            uint num2 = 0;
-            byte[] buf = new byte[4];
-            if (baseAddr != 0U && MugenWindow.MainObj().ReadMemory((IntPtr)(long)(baseAddr + this._addr_db.EXPLOD_LIST_BASE_OFFSET), ref buf, 4U) > 0)
-                num1 = BitConverter.ToUInt32(buf, 0);
-            if (num1 != 0U && MugenWindow.MainObj().ReadMemory((IntPtr)(long)num1, ref buf, 4U) > 0)
-                num2 = BitConverter.ToUInt32(buf, 0);
-            return num2;
+            return (uint) GameUtils.GetExplodListAddress(this.watcher, baseAddr);
         }
 
-        private uint GetExplodAdder(uint explodListAddr, uint index) => explodListAddr + index * this._addr_db.OFFSET_EXPLOD_LIST_OFFSET;
+        private uint GetExplodAdder(uint explodListAddr, uint index) => explodListAddr + index * this.watcher.MugenDatabase.OFFSET_EXPLOD_LIST_OFFSET;
 
         /// <summary>
         /// gets the display name (this is relative to the addr returned by <c>GetPlayerInfoAdder</c>)
@@ -1316,78 +1098,17 @@ namespace SwissArmyKnifeForMugen
         /// <returns></returns>
         private int GetDisplayName(uint playerAddr, ref string displayName)
         {
-            byte[] buf = new byte[256];
-            uint playerInfoAdder = this.GetPlayerInfoAdder(playerAddr);
-            if (playerInfoAdder == 0U || MugenWindow.MainObj().ReadMemory((IntPtr)(long)(playerInfoAdder + this._addr_db.DISPLAY_NAME_PLAYER_INFO_OFFSET), ref buf, 256U) <= 0)
-                return 0;
-            string str = Encoding.ASCII.GetString(buf);
-            int length = str.IndexOf(char.MinValue);
-            displayName = str.Substring(0, length);
+            int numBytes = PlayerUtils.GetDisplayName(this.watcher, playerAddr, ref displayName);
+            if (numBytes <= 0 || displayName.Length <= 0) return 0;
             return displayName.Length;
         }
+        
 
-        /// <summary>
-        /// helper function to read an integer from a specified address+offset combo
-        /// </summary>
-        /// <param name="addr">base address to read at</param>
-        /// <param name="offset">offset from addr</param>
-        /// <returns>data stored in memory as an integer</returns>
-        private int _GetInt32Data(uint addr, uint offset)
-        {
-            int num = 0;
-            byte[] buf = new byte[4];
-            if (MugenWindow.MainObj().ReadMemory((IntPtr)(long)(addr + offset), ref buf, 4U) > 0)
-                num = BitConverter.ToInt32(buf, 0);
-            return num;
-        }
+        private int GetPlayerId(uint playerAddr) => this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.PLAYER_ID_PLAYER_OFFSET);
 
-        /// <summary>
-        /// sets one int of data in Mugen's memory.
-        /// </summary>
-        /// <param name="addr">address to write to</param>
-        /// <param name="offset">offset from addr to write to</param>
-        /// <param name="value">value to write</param>
-        private void _SetInt32Data(uint addr, uint offset, int value)
-        {
-            byte[] bytes = BitConverter.GetBytes(value);
-            MugenWindow.MainObj().WriteMemory((IntPtr)(long)(addr + offset), ref bytes, 4U);
-        }
+        private int GetHelperId(uint playerAddr) => this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.HELPER_ID_PLAYER_OFFSET);
 
-        /// <summary>
-        /// helper function to read a float from a specified address+offset combo
-        /// </summary>
-        /// <param name="addr">base address to read at</param>
-        /// <param name="offset">offset from addr</param>
-        /// <returns>data stored in memory as a float (4-byte)</returns>
-        private float _GetFloatData(uint addr, uint offset)
-        {
-            float num = 0.0f;
-            byte[] buf = new byte[4];
-            if (MugenWindow.MainObj().ReadMemory((IntPtr)(long)(addr + offset), ref buf, 4U) > 0)
-                num = BitConverter.ToSingle(buf, 0);
-            return num;
-        }
-
-        /// <summary>
-        /// helper function to read a double from a specified address+offset combo
-        /// </summary>
-        /// <param name="addr">base address to read at</param>
-        /// <param name="offset">offset from addr</param>
-        /// <returns>data stored in memory as a double (8-byte float)</returns>
-        private double _GetDoubleData(uint addr, uint offset)
-        {
-            double num = 0.0;
-            byte[] buf = new byte[8];
-            if (MugenWindow.MainObj().ReadMemory((IntPtr)(long)(addr + offset), ref buf, 8U) > 0)
-                num = BitConverter.ToDouble(buf, 0);
-            return num;
-        }
-
-        private int GetPlayerId(uint playerAddr) => this._GetInt32Data(playerAddr, this._addr_db.PLAYER_ID_PLAYER_OFFSET);
-
-        private int GetHelperId(uint playerAddr) => this._GetInt32Data(playerAddr, this._addr_db.HELPER_ID_PLAYER_OFFSET);
-
-        private int GetParentId(uint playerAddr) => this._GetInt32Data(playerAddr, this._addr_db.PARENT_ID_PLAYER_OFFSET);
+        private int GetParentId(uint playerAddr) => this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.PARENT_ID_PLAYER_OFFSET);
 
         /// <summary>
         /// helper function to find a player slot/index from player ID.
@@ -1400,8 +1121,8 @@ namespace SwissArmyKnifeForMugen
         {
             for (int index = 0; index < 60; ++index)
             {
-                uint playerAddr = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)(index * 4)));
-                if (playerAddr != 0U && this.DoesExist(playerAddr) && playerId == this.GetPlayerId(playerAddr))
+                uint playerAddr = (uint) GameUtils.GetPlayerAddress(this.watcher, baseAddr, index + 1);
+                if (playerAddr != 0U && PlayerUtils.DoesPlayerExist(this.watcher, playerAddr) && playerId == this.GetPlayerId(playerAddr))
                     return index;
             }
             return -1;
@@ -1418,8 +1139,8 @@ namespace SwissArmyKnifeForMugen
         {
             for (int index = 0; index < 60; ++index)
             {
-                uint playerAddr = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)(index * 4)));
-                if (playerAddr != 0U && this.DoesExist(playerAddr) && playerId == this.GetPlayerId(playerAddr))
+                uint playerAddr = (uint)GameUtils.GetPlayerAddress(this.watcher, baseAddr, index + 1);
+                if (playerAddr != 0U && PlayerUtils.DoesPlayerExist(this.watcher, playerAddr) && playerId == this.GetPlayerId(playerAddr))
                     return playerAddr;
             }
             return 0;
@@ -1436,7 +1157,7 @@ namespace SwissArmyKnifeForMugen
         /// <returns></returns>
         private uint GetPlayerAddrFromHelperId(uint baseAddr, int helperId, int owner)
         {
-            uint playerAddr1 = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)(owner * 4)));
+            uint playerAddr1 = (uint)GameUtils.GetPlayerAddress(this.watcher, baseAddr, owner + 1);
             if (playerAddr1 == 0U)
                 return 0;
             int playerId = this.GetPlayerId(playerAddr1);
@@ -1444,8 +1165,8 @@ namespace SwissArmyKnifeForMugen
                 return 0;
             for (int index = 4; index < 60; ++index)
             {
-                uint playerAddr2 = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)(index * 4)));
-                if (playerAddr2 != 0U && this.DoesExist(playerAddr2) && helperId == this.GetHelperId(playerAddr2))
+                uint playerAddr2 = (uint)GameUtils.GetPlayerAddress(this.watcher, baseAddr, index + 1);
+                if (playerAddr2 != 0U && PlayerUtils.DoesPlayerExist(this.watcher, playerAddr2) && helperId == this.GetHelperId(playerAddr2))
                 {
                     int rootId = this.GetRootId(baseAddr, this.GetPlayerId(playerAddr2));
                     if (playerId == rootId)
@@ -1471,74 +1192,63 @@ namespace SwissArmyKnifeForMugen
                 int playerNoFromId = this.GetPlayerNoFromId(baseAddr, playerId);
                 if (playerNoFromId < 0)
                     return num;
-                playerAddr = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)(playerNoFromId * 4)));
+                playerAddr = (uint)GameUtils.GetPlayerAddress(this.watcher, baseAddr, playerNoFromId + 1);
             }
             return num;
         }
 
-        private bool DoesExplodExist(uint explodAddr) => (uint)this._GetInt32Data(explodAddr, this._addr_db.EXIST_EXPLOD_OFFSET) > 0U;
+        private bool DoesExplodExist(uint explodAddr) => (uint)this.watcher.GetInt32Data(explodAddr, this.watcher.MugenDatabase.EXIST_EXPLOD_OFFSET) > 0U;
 
-        private int GetExplodId(uint explodAddr) => this._GetInt32Data(explodAddr, this._addr_db.EXPLOD_ID_EXPLOD_OFFSET);
+        private int GetExplodId(uint explodAddr) => this.watcher.GetInt32Data(explodAddr, this.watcher.MugenDatabase.EXPLOD_ID_EXPLOD_OFFSET);
 
-        private int GetExplodOwnerId(uint explodAddr) => this._GetInt32Data(explodAddr, this._addr_db.EXPLOD_OWNER_ID_EXPLOD_OFFSET);
+        private int GetExplodOwnerId(uint explodAddr) => this.watcher.GetInt32Data(explodAddr, this.watcher.MugenDatabase.EXPLOD_OWNER_ID_EXPLOD_OFFSET);
 
         private uint GetProjBaseAdder(uint playerAddr)
         {
-            uint num1 = 0;
-            uint num2 = 0;
-            byte[] buf = new byte[4];
-            if (playerAddr != 0U && MugenWindow.MainObj().ReadMemory((IntPtr)(long)(playerAddr + this._addr_db.PROJ_BASE_PLAYER_OFFSET), ref buf, 4U) > 0)
-                num1 = BitConverter.ToUInt32(buf, 0);
-            if (num1 != 0U && MugenWindow.MainObj().ReadMemory((IntPtr)(long)num1, ref buf, 4U) > 0)
-                num2 = BitConverter.ToUInt32(buf, 0);
-            return num2;
+            return (uint) PlayerUtils.GetProjBaseAddress(this.watcher, playerAddr);
         }
 
         private uint GetProjListAdder(uint projBaseAddr)
         {
-            uint num = 0;
-            byte[] buf = new byte[4];
-            if (projBaseAddr != 0U && MugenWindow.MainObj().ReadMemory((IntPtr)(long)(projBaseAddr + this._addr_db.PROJ_LIST_PROJ_BASE_OFFSET), ref buf, 4U) > 0)
-                num = BitConverter.ToUInt32(buf, 0);
-            return num;
+            return (uint) PlayerUtils.GetProjListAddress(this.watcher, projBaseAddr);
         }
 
-        private uint GetProjAdder(uint projListAddr, uint index) => projListAddr + index * this._addr_db.OFFSET_PROJ_LIST_OFFSET;
+        private uint GetProjAdder(uint projListAddr, uint index) => projListAddr + index * this.watcher.MugenDatabase.OFFSET_PROJ_LIST_OFFSET;
 
         private bool DoesProjExist(uint projBase, int projNo, uint projAddr)
         {
-            int int32Data = this._GetInt32Data(projBase, this._addr_db.PROJ_MAX_PROJ_BASE_OFFSET);
-            return projNo <= int32Data && this._GetInt32Data(projAddr, this._addr_db.EXIST_PROJ_OFFSET) == 1;
+            int int32Data = this.watcher.GetInt32Data(projBase, this.watcher.MugenDatabase.PROJ_MAX_PROJ_BASE_OFFSET);
+            return projNo <= int32Data && this.watcher.GetInt32Data(projAddr, this.watcher.MugenDatabase.EXIST_PROJ_OFFSET) == 1;
         }
 
-        private int GetProjId(uint projAddr) => this._GetInt32Data(projAddr, this._addr_db.PROJ_ID_PROJ_OFFSET);
+        private int GetProjId(uint projAddr) => this.watcher.GetInt32Data(projAddr, this.watcher.MugenDatabase.PROJ_ID_PROJ_OFFSET);
 
         private int GetProjX(uint playerAddr, uint projAddr)
         {
-            if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4)
-                return (int)((double)this._GetFloatData(projAddr, this._addr_db.PROJ_X_PROJ_OFFSET) / (this.GetScreenX(this.GetBaseAddr()) / this.GetLocalCoordX(playerAddr)));
-            return this._mugen_type != MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10 ? this._GetInt32Data(projAddr, this._addr_db.PROJ_X_PROJ_OFFSET) : 320 + (int)this._GetFloatData(projAddr, this._addr_db.PROJ_X_PROJ_OFFSET);
+            if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN11A4)
+                return (int)((double)this.watcher.GetFloatData(projAddr, this.watcher.MugenDatabase.PROJ_X_PROJ_OFFSET) / (GameUtils.GetScreenX(this.watcher) / this.GetLocalCoordX(playerAddr)));
+            return this.watcher.MugenVersion != MugenType_t.MUGEN_TYPE_MUGEN10 ? this.watcher.GetInt32Data(projAddr, this.watcher.MugenDatabase.PROJ_X_PROJ_OFFSET) : 320 + (int)this.watcher.GetFloatData(projAddr, this.watcher.MugenDatabase.PROJ_X_PROJ_OFFSET);
         }
 
         private int GetProjY(uint playerAddr, uint projAddr)
         {
-            if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4)
-                return (int)((double)this._GetFloatData(projAddr, this._addr_db.PROJ_Y_PROJ_OFFSET) / (this.GetScreenY(this.GetBaseAddr()) / this.GetLocalCoordY(playerAddr)));
-            return this._mugen_type != MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10 ? this._GetInt32Data(projAddr, this._addr_db.PROJ_Y_PROJ_OFFSET) : 240 + (int)this._GetFloatData(projAddr, this._addr_db.PROJ_Y_PROJ_OFFSET);
+            if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN11A4)
+                return (int)((double)this.watcher.GetFloatData(projAddr, this.watcher.MugenDatabase.PROJ_Y_PROJ_OFFSET) / (GameUtils.GetScreenY(this.watcher) / this.GetLocalCoordY(playerAddr)));
+            return this.watcher.MugenVersion != MugenType_t.MUGEN_TYPE_MUGEN10 ? this.watcher.GetInt32Data(projAddr, this.watcher.MugenDatabase.PROJ_Y_PROJ_OFFSET) : 240 + (int)this.watcher.GetFloatData(projAddr, this.watcher.MugenDatabase.PROJ_Y_PROJ_OFFSET);
         }
 
         private int GetAnimIndex(uint explodAddr)
         {
-            uint int32Data = (uint)this._GetInt32Data(explodAddr, this._addr_db.ANIM_ADDR_EXPLOD_OFFSET);
-            return int32Data != 0U ? this._GetInt32Data(int32Data, this._addr_db.ANIM_INDEX_EXPLOD_OFFSET) : -1;
+            uint int32Data = (uint)this.watcher.GetInt32Data(explodAddr, this.watcher.MugenDatabase.ANIM_ADDR_EXPLOD_OFFSET);
+            return int32Data != 0U ? this.watcher.GetInt32Data(int32Data, this.watcher.MugenDatabase.ANIM_INDEX_EXPLOD_OFFSET) : -1;
         }
 
         private int GetStateOwner(uint baseAddr, uint playerAddr)
         {
-            int int32Data = this._GetInt32Data(playerAddr, this._addr_db.STATE_OWNER_PLAYER_OFFSET);
+            int int32Data = this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.STATE_OWNER_PLAYER_OFFSET);
             if (int32Data <= 0 || int32Data > 60)
                 return -1;
-            uint playerAddr1 = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)((int32Data - 1) * 4)));
+            uint playerAddr1 = (uint)GameUtils.GetPlayerAddress(this.watcher, baseAddr, int32Data);
             return playerAddr1 != 0U ? this.GetPlayerId(playerAddr1) : 0;
         }
 
@@ -1549,9 +1259,9 @@ namespace SwissArmyKnifeForMugen
             uint num = 544;
             for (uint index = 0; index <= 128U; index += 4U)
             {
-                if (this._GetInt32Data(this._debugSpPointer, num + index) == 1 && (int)playerAddr == this._GetInt32Data(this._debugSpPointer, (uint)((int)num + (int)index + 48)))
+                if (this.watcher.GetInt32Data(this._debugSpPointer, num + index) == 1 && (int)playerAddr == this.watcher.GetInt32Data(this._debugSpPointer, (uint)((int)num + (int)index + 48)))
                 {
-                    int int32Data = this._GetInt32Data(this._debugSpPointer, (uint)((int)num + (int)index + 152));
+                    int int32Data = this.watcher.GetInt32Data(this._debugSpPointer, (uint)((int)num + (int)index + 152));
                     switch (int32Data)
                     {
                         case -3:
@@ -1566,17 +1276,17 @@ namespace SwissArmyKnifeForMugen
             return 0;
         }
 
-        private int GetStateNo(uint playerAddr) => this._GetInt32Data(playerAddr, this._addr_db.STATE_NO_PLAYER_OFFSET);
+        private int GetStateNo(uint playerAddr) => this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.STATE_NO_PLAYER_OFFSET);
 
-        private int GetPrevStateNo(uint playerAddr) => this._GetInt32Data(playerAddr, this._addr_db.PREV_STATE_NO_PLAYER_OFFSET);
+        private int GetPrevStateNo(uint playerAddr) => this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.PREV_STATE_NO_PLAYER_OFFSET);
 
-        private int GetPalno(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.PALNO_PLAYER_OFFSET) + 1 : 0;
+        private int GetPalno(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.PALNO_PLAYER_OFFSET) + 1 : 0;
 
-        private int GetAlive(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.ALIVE_PLAYER_OFFSET) : 0;
+        private int GetAlive(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.ALIVE_PLAYER_OFFSET) : 0;
 
-        private int GetLife(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.LIFE_PLAYER_OFFSET) : 0;
+        private int GetLife(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.LIFE_PLAYER_OFFSET) : 0;
 
-        private int GetPower(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.POWER_PLAYER_OFFSET) : 0;
+        private int GetPower(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.POWER_PLAYER_OFFSET) : 0;
 
         /// <summary>
         /// navigates anim structures to read anim list address
@@ -1592,15 +1302,15 @@ namespace SwissArmyKnifeForMugen
             uint playerInfoAdder = this.GetPlayerInfoAdder(playerAddr);
             if (playerInfoAdder == 0U)
                 return 0;
-            uint int32Data1 = (uint)this._GetInt32Data(playerInfoAdder, this._addr_db.ANIM_LIST_REF1_PLAYER_INFO_OFFSET);
+            uint int32Data1 = (uint)this.watcher.GetInt32Data(playerInfoAdder, this.watcher.MugenDatabase.ANIM_LIST_REF1_PLAYER_INFO_OFFSET);
             if (int32Data1 == 0U)
                 return 0;
             try
             {
-                uint int32Data2 = (uint)this._GetInt32Data(int32Data1, this._addr_db.ANIM_LIST_REF2_PLAYER_INFO_OFFSET);
+                uint int32Data2 = (uint)this.watcher.GetInt32Data(int32Data1, this.watcher.MugenDatabase.ANIM_LIST_REF2_PLAYER_INFO_OFFSET);
                 if (int32Data2 == 0U)
                     return 0;
-                uint int32Data3 = (uint)this._GetInt32Data(int32Data2, this._addr_db.ANIM_LIST_REF3_PLAYER_INFO_OFFSET);
+                uint int32Data3 = (uint)this.watcher.GetInt32Data(int32Data2, this.watcher.MugenDatabase.ANIM_LIST_REF3_PLAYER_INFO_OFFSET);
                 if (this._CheckAnimList(int32Data3))
                     return int32Data3;
             }
@@ -1619,12 +1329,12 @@ namespace SwissArmyKnifeForMugen
         {
             try
             {
-                int int32Data1 = this._GetInt32Data(targetAddr, 0U);
-                int int32Data2 = this._GetInt32Data(targetAddr, 4U);
-                int int32Data3 = this._GetInt32Data(targetAddr, 16U);
-                int int32Data4 = this._GetInt32Data(targetAddr, 20U);
-                int int32Data5 = this._GetInt32Data(targetAddr, 32U);
-                int int32Data6 = this._GetInt32Data(targetAddr, 36U);
+                int int32Data1 = this.watcher.GetInt32Data(targetAddr, 0U);
+                int int32Data2 = this.watcher.GetInt32Data(targetAddr, 4U);
+                int int32Data3 = this.watcher.GetInt32Data(targetAddr, 16U);
+                int int32Data4 = this.watcher.GetInt32Data(targetAddr, 20U);
+                int int32Data5 = this.watcher.GetInt32Data(targetAddr, 32U);
+                int int32Data6 = this.watcher.GetInt32Data(targetAddr, 36U);
                 if (int32Data1 == 1)
                 {
                     if (int32Data2 == 0)
@@ -1649,197 +1359,197 @@ namespace SwissArmyKnifeForMugen
             return false;
         }
 
-        private int GetAnimNo(uint animListAddr, int index) => animListAddr != 0U ? this._GetInt32Data(animListAddr, (uint)((ulong)index * (ulong)this._addr_db.OFFSET_ANIM_LIST_OFFSET + (ulong)this._addr_db.ANIM_NO_ANIM_OFFSET)) : -1;
+        private int GetAnimNo(uint animListAddr, int index) => animListAddr != 0U ? this.watcher.GetInt32Data(animListAddr, (uint)((ulong)index * (ulong)this.watcher.MugenDatabase.OFFSET_ANIM_LIST_OFFSET + (ulong)this.watcher.MugenDatabase.ANIM_NO_ANIM_OFFSET)) : -1;
 
         private int GetAnim(uint baseAddr, uint playerAddr) => -1;
 
-        private int GetDamage(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.DAMAGE_PLAYER_OFFSET) : 0;
+        private int GetDamage(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.DAMAGE_PLAYER_OFFSET) : 0;
 
-        private int GetCtrl(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.CTRL_PLAYER_OFFSET) : 0;
+        private int GetCtrl(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.CTRL_PLAYER_OFFSET) : 0;
 
-        private int GetStateType(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.STATE_TYPE_PLAYER_OFFSET) : 0;
+        private int GetStateType(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.STATE_TYPE_PLAYER_OFFSET) : 0;
 
-        private int GetMoveType(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.MOVE_TYPE_PLAYER_OFFSET) : 0;
+        private int GetMoveType(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.MOVE_TYPE_PLAYER_OFFSET) : 0;
 
-        private int GetHitPauseTime(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.HIT_PAUSE_TIME_PLAYER_OFFSET) : 0;
+        private int GetHitPauseTime(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.HIT_PAUSE_TIME_PLAYER_OFFSET) : 0;
 
         private int GetMoveContact(uint playerAddr)
         {
             if (playerAddr == 0U)
                 return 0;
-            switch (this._GetInt32Data(playerAddr, this._addr_db.MOVE_CONTACT_PLAYER_OFFSET))
+            switch (this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.MOVE_CONTACT_PLAYER_OFFSET))
             {
                 case 1:
-                    return this._GetInt32Data(playerAddr, this._addr_db.MOVE_HIT_PLAYER_OFFSET);
+                    return this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.MOVE_HIT_PLAYER_OFFSET);
                 case 2:
-                    return this._GetInt32Data(playerAddr, this._addr_db.MOVE_HIT_PLAYER_OFFSET);
+                    return this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.MOVE_HIT_PLAYER_OFFSET);
                 default:
                     return 0;
             }
         }
 
-        private int GetMoveHit(uint playerAddr) => playerAddr != 0U && this._GetInt32Data(playerAddr, this._addr_db.MOVE_CONTACT_PLAYER_OFFSET) == 2 ? this._GetInt32Data(playerAddr, this._addr_db.MOVE_HIT_PLAYER_OFFSET) : 0;
+        private int GetMoveHit(uint playerAddr) => playerAddr != 0U && this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.MOVE_CONTACT_PLAYER_OFFSET) == 2 ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.MOVE_HIT_PLAYER_OFFSET) : 0;
 
-        private int GetMoveGuarded(uint playerAddr) => playerAddr != 0U && this._GetInt32Data(playerAddr, this._addr_db.MOVE_CONTACT_PLAYER_OFFSET) == 1 ? this._GetInt32Data(playerAddr, this._addr_db.MOVE_HIT_PLAYER_OFFSET) : 0;
+        private int GetMoveGuarded(uint playerAddr) => playerAddr != 0U && this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.MOVE_CONTACT_PLAYER_OFFSET) == 1 ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.MOVE_HIT_PLAYER_OFFSET) : 0;
 
-        private int GetMoveReversed(uint playerAddr) => playerAddr != 0U && this._GetInt32Data(playerAddr, this._addr_db.MOVE_CONTACT_PLAYER_OFFSET) == 4 ? this._GetInt32Data(playerAddr, this._addr_db.MOVE_HIT_PLAYER_OFFSET) : 0;
+        private int GetMoveReversed(uint playerAddr) => playerAddr != 0U && this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.MOVE_CONTACT_PLAYER_OFFSET) == 4 ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.MOVE_HIT_PLAYER_OFFSET) : 0;
 
         private int GetNoClsn2Flag(uint playerAddr)
         {
             if (playerAddr == 0U)
                 return 1;
-            uint int32Data1 = (uint)this._GetInt32Data(playerAddr, this._addr_db.ANIM_ADDR_PLAYER_OFFSET);
+            uint int32Data1 = (uint)this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.ANIM_ADDR_PLAYER_OFFSET);
             if (int32Data1 == 0U)
                 return 1;
-            uint int32Data2 = (uint)this._GetInt32Data(int32Data1, this._addr_db.ANIM_INFO_ANIM_OFFSET);
-            return int32Data2 == 0U || this._GetInt32Data(int32Data2, this._addr_db.CLSN2_ADDR_ANIM_INFO_OFFSET) == 0 ? 1 : 0;
+            uint int32Data2 = (uint)this.watcher.GetInt32Data(int32Data1, this.watcher.MugenDatabase.ANIM_INFO_ANIM_OFFSET);
+            return int32Data2 == 0U || this.watcher.GetInt32Data(int32Data2, this.watcher.MugenDatabase.CLSN2_ADDR_ANIM_INFO_OFFSET) == 0 ? 1 : 0;
         }
 
         private int GetHasClsn1Flag(uint playerAddr)
         {
             if (playerAddr == 0U)
                 return 1;
-            uint int32Data1 = (uint)this._GetInt32Data(playerAddr, this._addr_db.ANIM_ADDR_PLAYER_OFFSET);
+            uint int32Data1 = (uint)this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.ANIM_ADDR_PLAYER_OFFSET);
             if (int32Data1 == 0U)
                 return 1;
-            uint int32Data2 = (uint)this._GetInt32Data(int32Data1, this._addr_db.ANIM_INFO_ANIM_OFFSET);
-            return int32Data2 == 0U || this._GetInt32Data(int32Data2, this._addr_db.CLSN1_ADDR_ANIM_INFO_OFFSET) == 0 ? 0 : 1;
+            uint int32Data2 = (uint)this.watcher.GetInt32Data(int32Data1, this.watcher.MugenDatabase.ANIM_INFO_ANIM_OFFSET);
+            return int32Data2 == 0U || this.watcher.GetInt32Data(int32Data2, this.watcher.MugenDatabase.CLSN1_ADDR_ANIM_INFO_OFFSET) == 0 ? 0 : 1;
         }
 
-        private int GetMuteki(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.MUTEKI_PLAYER_OFFSET) : 0;
+        private int GetMuteki(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.MUTEKI_PLAYER_OFFSET) : 0;
 
-        private int GetHitBy(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.HITBY_1_PLAYER_OFFSET) & this._GetInt32Data(playerAddr, this._addr_db.HITBY_2_PLAYER_OFFSET) : 0;
+        private int GetHitBy(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.HITBY_1_PLAYER_OFFSET) & this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.HITBY_2_PLAYER_OFFSET) : 0;
 
         private int GetHitOverRide(uint playerAddr, int indexFrom0)
         {
             if (playerAddr == 0U || indexFrom0 < 0 || indexFrom0 > 7)
                 return 0;
-            uint addr = (uint)((ulong)(playerAddr + this._addr_db.HITOVERRIDE_LIST_PLAYER_OFFSET) + (ulong)this._addr_db.OFFSET_HITOVERRIDE_LIST_OFFSET * (ulong)indexFrom0);
-            return this._GetInt32Data(addr, this._addr_db.EXIST_HITOVERRIDE_OFFSET) != 0 ? this._GetInt32Data(addr, this._addr_db.ATTR_HITOVERRIDE_OFFSET) : 0;
+            uint addr = (uint)((ulong)(playerAddr + this.watcher.MugenDatabase.HITOVERRIDE_LIST_PLAYER_OFFSET) + (ulong)this.watcher.MugenDatabase.OFFSET_HITOVERRIDE_LIST_OFFSET * (ulong)indexFrom0);
+            return this.watcher.GetInt32Data(addr, this.watcher.MugenDatabase.EXIST_HITOVERRIDE_OFFSET) != 0 ? this.watcher.GetInt32Data(addr, this.watcher.MugenDatabase.ATTR_HITOVERRIDE_OFFSET) : 0;
         }
 
         private int GetTarget(uint playerAddr, int targetNo)
         {
             if (playerAddr == 0U)
                 return 0;
-            uint int32Data1 = (uint)this._GetInt32Data(playerAddr, this._addr_db.TARGET_ENTRY_PLAYER_OFFSET);
-            if (int32Data1 == 0U || this._GetInt32Data(int32Data1, this._addr_db.NUMTARGET_TARGET_ENTRY_OFFSET) <= targetNo)
+            uint int32Data1 = (uint)this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.TARGET_ENTRY_PLAYER_OFFSET);
+            if (int32Data1 == 0U || this.watcher.GetInt32Data(int32Data1, this.watcher.MugenDatabase.NUMTARGET_TARGET_ENTRY_OFFSET) <= targetNo)
                 return 0;
-            uint int32Data2 = (uint)this._GetInt32Data(int32Data1, this._addr_db.TARGET_LIST_TARGET_ENTRY_OFFSET);
+            uint int32Data2 = (uint)this.watcher.GetInt32Data(int32Data1, this.watcher.MugenDatabase.TARGET_LIST_TARGET_ENTRY_OFFSET);
             if (int32Data2 == 0U)
                 return 0;
-            uint int32Data3 = (uint)this._GetInt32Data(int32Data2, (uint)((ulong)this._addr_db.OFFSET_TARGET_LIST_OFFSET * (ulong)targetNo));
+            uint int32Data3 = (uint)this.watcher.GetInt32Data(int32Data2, (uint)((ulong)this.watcher.MugenDatabase.OFFSET_TARGET_LIST_OFFSET * (ulong)targetNo));
             return int32Data3 != 0U ? this.GetPlayerId(int32Data3) : 0;
         }
 
-        private int GetFallDamage(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.FALL_DAMAGE_PLAYER_OFFSET) : 0;
+        private int GetFallDamage(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.FALL_DAMAGE_PLAYER_OFFSET) : 0;
 
-        private int GetFacing(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.FACING_PLAYER_OFFSET) : 0;
+        private int GetFacing(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.FACING_PLAYER_OFFSET) : 0;
 
         private float GetPosX(uint baseAddr, uint playerAddr)
         {
             if (playerAddr == 0U)
                 return 0.0f;
-            if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4 || this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11B1)
+            if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN11A4 || this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN11B1)
             {
-                double stagePosX = this._GetDoubleData(playerAddr, this._addr_db.STAGEPOS_X_PLAYER_OFFSET);
-                float camPosX = this._GetFloatData(baseAddr, this._addr_db.CAMERAPOS_X_BASE_OFFSET);
+                double stagePosX = this.watcher.GetDoubleData(playerAddr, this.watcher.MugenDatabase.STAGEPOS_X_PLAYER_OFFSET);
+                float camPosX = this.watcher.GetFloatData(baseAddr, this.watcher.MugenDatabase.CAMERAPOS_X_BASE_OFFSET);
 
-                float stageLocalX = this.GetScreenX(baseAddr);
+                float stageLocalX = GameUtils.GetScreenX(this.watcher);
                 double playerLocalX = this.GetLocalCoordX(playerAddr);
 
                 float scale = (float)(playerLocalX / stageLocalX);
                 return (float)((stagePosX - camPosX) * scale);
             }
-            else if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10)
+            else if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN10)
             {
                 // awkwardly done because datatypes changed from 1.0 to 1.1, so regular LocalCoord and Screen funcs fail here.
-                float stagePosX = this._GetFloatData(playerAddr, this._addr_db.STAGEPOS_X_PLAYER_OFFSET);
-                float camPosX = this._GetFloatData(baseAddr, this._addr_db.CAMERAPOS_X_BASE_OFFSET);
+                float stagePosX = this.watcher.GetFloatData(playerAddr, this.watcher.MugenDatabase.STAGEPOS_X_PLAYER_OFFSET);
+                float camPosX = this.watcher.GetFloatData(baseAddr, this.watcher.MugenDatabase.CAMERAPOS_X_BASE_OFFSET);
 
-                float stageLocalX = this._GetFloatData(baseAddr, this._addr_db.SCREEN_X_BASE_OFFSET);
-                double playerLocalX = this._GetFloatData((uint)this._GetInt32Data(playerAddr, 0), this._addr_db.LOCALCOORD_X_PLAYER_INFO_OFFSET);
+                float stageLocalX = this.watcher.GetFloatData(baseAddr, this.watcher.MugenDatabase.SCREEN_X_BASE_OFFSET);
+                double playerLocalX = this.watcher.GetFloatData((uint)this.watcher.GetInt32Data(playerAddr, 0), this.watcher.MugenDatabase.LOCALCOORD_X_PLAYER_INFO_OFFSET);
 
                 float scale = (float)(playerLocalX / stageLocalX) * (float)2.0;
                 return (float)((stagePosX - camPosX) * scale);
             }
-            return this._mugen_type != MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN ? (float)(((double)this._GetFloatData(playerAddr, this._addr_db.POS_X_PLAYER_OFFSET) - (double)this.GetScreenX(baseAddr)) / 2.0) : (float)((double)this._GetFloatData(playerAddr, this._addr_db.POS_X_PLAYER_OFFSET) - (double)this.GetScreenX(baseAddr) - 160.0);
+            return this.watcher.MugenVersion != MugenType_t.MUGEN_TYPE_WINMUGEN ? (float)(((double)this.watcher.GetFloatData(playerAddr, this.watcher.MugenDatabase.POS_X_PLAYER_OFFSET) - (double)GameUtils.GetScreenX(this.watcher)) / 2.0) : (float)((double)this.watcher.GetFloatData(playerAddr, this.watcher.MugenDatabase.POS_X_PLAYER_OFFSET) - (double)GameUtils.GetScreenX(this.watcher) - 160.0);
         }
 
         private float GetPosY(uint baseAddr, uint playerAddr)
         {
             if (playerAddr == 0U)
                 return 0.0f;
-            if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4 || this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11B1)
+            if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN11A4 || this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN11B1)
             {
-                double stagePosY = this._GetDoubleData(playerAddr, this._addr_db.STAGEPOS_Y_PLAYER_OFFSET);
+                double stagePosY = this.watcher.GetDoubleData(playerAddr, this.watcher.MugenDatabase.STAGEPOS_Y_PLAYER_OFFSET);
                 return (float)stagePosY;
             }
-            else if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10)
+            else if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN10)
             {
-                float stagePosY = this._GetFloatData(playerAddr, this._addr_db.STAGEPOS_Y_PLAYER_OFFSET);
+                float stagePosY = this.watcher.GetFloatData(playerAddr, this.watcher.MugenDatabase.STAGEPOS_Y_PLAYER_OFFSET);
                 return stagePosY;
             }
-            return this._mugen_type != MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN ? this._GetFloatData(playerAddr, this._addr_db.POS_Y_PLAYER_OFFSET) / 2f : this._GetFloatData(playerAddr, this._addr_db.POS_Y_PLAYER_OFFSET);
+            return this.watcher.MugenVersion != MugenType_t.MUGEN_TYPE_WINMUGEN ? this.watcher.GetFloatData(playerAddr, this.watcher.MugenDatabase.POS_Y_PLAYER_OFFSET) / 2f : this.watcher.GetFloatData(playerAddr, this.watcher.MugenDatabase.POS_Y_PLAYER_OFFSET);
         }
 
         private float GetVelX(uint baseAddr, uint playerAddr)
         {
-            if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4)
+            if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN11A4)
             {
-                double doubleData = this._GetDoubleData(playerAddr, this._addr_db.VEL_X_PLAYER_OFFSET);
+                double doubleData = this.watcher.GetDoubleData(playerAddr, this.watcher.MugenDatabase.VEL_X_PLAYER_OFFSET);
                 double localCoordX = this.GetLocalCoordX(playerAddr);
-                double num = (double)this.GetScreenX(baseAddr) / localCoordX;
+                double num = (double)GameUtils.GetScreenX(this.watcher) / localCoordX;
                 return (float)(doubleData / num) * (float)this.GetFacing(playerAddr);
             }
-            return playerAddr != 0U ? this._GetFloatData(playerAddr, this._addr_db.VEL_X_PLAYER_OFFSET) : 0.0f;
+            return playerAddr != 0U ? this.watcher.GetFloatData(playerAddr, this.watcher.MugenDatabase.VEL_X_PLAYER_OFFSET) : 0.0f;
         }
 
         private float GetVelY(uint baseAddr, uint playerAddr)
         {
-            if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4)
+            if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN11A4)
             {
-                double doubleData = this._GetDoubleData(playerAddr, this._addr_db.VEL_Y_PLAYER_OFFSET);
+                double doubleData = this.watcher.GetDoubleData(playerAddr, this.watcher.MugenDatabase.VEL_Y_PLAYER_OFFSET);
                 double localCoordY = this.GetLocalCoordY(playerAddr);
-                double num = (double)this.GetScreenY(baseAddr) / localCoordY;
+                double num = (double)GameUtils.GetScreenY(this.watcher) / localCoordY;
                 return (float)(doubleData / num);
             }
-            return playerAddr != 0U ? this._GetFloatData(playerAddr, this._addr_db.VEL_Y_PLAYER_OFFSET) : 0.0f;
+            return playerAddr != 0U ? this.watcher.GetFloatData(playerAddr, this.watcher.MugenDatabase.VEL_Y_PLAYER_OFFSET) : 0.0f;
         }
 
         private double GetLocalCoordX(uint playerAddr) 
         {
-            if ((this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN) || playerAddr == 0U)
+            if ((this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_WINMUGEN) || playerAddr == 0U)
                 return 0.0;
-            else return this._GetDoubleData((uint)this._GetInt32Data(playerAddr, 0U), this._addr_db.LOCALCOORD_X_PLAYER_INFO_OFFSET);
+            else return this.watcher.GetDoubleData((uint)this.watcher.GetInt32Data(playerAddr, 0U), this.watcher.MugenDatabase.LOCALCOORD_X_PLAYER_INFO_OFFSET);
         }
 
         private double GetLocalCoordY(uint playerAddr)
         {
-            if ((this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN) || playerAddr == 0U)
+            if ((this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_WINMUGEN) || playerAddr == 0U)
                 return 0.0;
-            else return this._GetDoubleData((uint)this._GetInt32Data(playerAddr, 0U), this._addr_db.LOCALCOORD_Y_PLAYER_INFO_OFFSET);
+            else return this.watcher.GetDoubleData((uint)this.watcher.GetInt32Data(playerAddr, 0U), this.watcher.MugenDatabase.LOCALCOORD_Y_PLAYER_INFO_OFFSET);
         }
 
-        private int GetSysvar(uint playerAddr, int index) => playerAddr != 0U ? this._GetInt32Data(playerAddr, (uint)((ulong)this._addr_db.SYS_VAR_PLAYER_OFFSET + (ulong)(index * 4))) : 0;
+        private int GetSysvar(uint playerAddr, int index) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, (uint)((ulong)this.watcher.MugenDatabase.SYS_VAR_PLAYER_OFFSET + (ulong)(index * 4))) : 0;
 
-        private float GetSysfvar(uint playerAddr, int index) => playerAddr != 0U ? this._GetFloatData(playerAddr, (uint)((ulong)this._addr_db.SYS_FVAR_PLAYER_OFFSET + (ulong)(index * 4))) : 0.0f;
+        private float GetSysfvar(uint playerAddr, int index) => playerAddr != 0U ? this.watcher.GetFloatData(playerAddr, (uint)((ulong)this.watcher.MugenDatabase.SYS_FVAR_PLAYER_OFFSET + (ulong)(index * 4))) : 0.0f;
 
-        private int GetVar(uint playerAddr, int index) => playerAddr != 0U ? this._GetInt32Data(playerAddr, (uint)((ulong)this._addr_db.VAR_PLAYER_OFFSET + (ulong)(index * 4))) : 0;
+        private int GetVar(uint playerAddr, int index) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, (uint)((ulong)this.watcher.MugenDatabase.VAR_PLAYER_OFFSET + (ulong)(index * 4))) : 0;
 
-        private float GetFvar(uint playerAddr, int index) => playerAddr != 0U ? this._GetFloatData(playerAddr, (uint)((ulong)this._addr_db.FVAR_PLAYER_OFFSET + (ulong)(index * 4))) : 0.0f;
+        private float GetFvar(uint playerAddr, int index) => playerAddr != 0U ? this.watcher.GetFloatData(playerAddr, (uint)((ulong)this.watcher.MugenDatabase.FVAR_PLAYER_OFFSET + (ulong)(index * 4))) : 0.0f;
 
-        private int GetActiveFlag(uint baseAddr, int playerNo) => baseAddr != 0U ? this._GetInt32Data(baseAddr, (uint)((ulong)this._addr_db.ACTIVE_PLAYER_OFFSET + (ulong)(playerNo * 4))) : 0;
+        private int GetActiveFlag(uint baseAddr, int playerNo) => baseAddr != 0U ? this.watcher.GetInt32Data(baseAddr, (uint)((ulong)this.watcher.MugenDatabase.ACTIVE_PLAYER_OFFSET + (ulong)(playerNo * 4))) : 0;
 
-        private int GetPauseTime(uint baseAddr) => baseAddr != 0U ? this._GetInt32Data(baseAddr, this._addr_db.PAUSE_TIME_BASE_OFFSET) : 0;
+        private int GetPauseTime(uint baseAddr) => baseAddr != 0U ? this.watcher.GetInt32Data(baseAddr, this.watcher.MugenDatabase.PAUSE_TIME_BASE_OFFSET) : 0;
 
-        private int GetSuperPauseTime(uint baseAddr) => baseAddr != 0U ? this._GetInt32Data(baseAddr, this._addr_db.SUPER_PAUSE_TIME_BASER_OFFSET) : 0;
+        private int GetSuperPauseTime(uint baseAddr) => baseAddr != 0U ? this.watcher.GetInt32Data(baseAddr, this.watcher.MugenDatabase.SUPER_PAUSE_TIME_BASER_OFFSET) : 0;
 
-        private int GetPauseMoveTime(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.PAUSE_MOVE_TIME_PLAYER_OFFSET) : 0;
+        private int GetPauseMoveTime(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.PAUSE_MOVE_TIME_PLAYER_OFFSET) : 0;
 
-        private int GetSuperPauseMoveTime(uint playerAddr) => playerAddr != 0U ? this._GetInt32Data(playerAddr, this._addr_db.SUPER_PAUSE_MOVE_TIME_PLAYER_OFFSET) : 0;
+        private int GetSuperPauseMoveTime(uint playerAddr) => playerAddr != 0U ? this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.SUPER_PAUSE_MOVE_TIME_PLAYER_OFFSET) : 0;
 
-        private float GetAttackMulSet(uint playerAddr) => playerAddr != 0U ? this._GetFloatData(playerAddr, this._addr_db.ATTACK_MUL_SET_PLAYER_OFFSET) : 0.0f;
+        private float GetAttackMulSet(uint playerAddr) => playerAddr != 0U ? this.watcher.GetFloatData(playerAddr, this.watcher.MugenDatabase.ATTACK_MUL_SET_PLAYER_OFFSET) : 0.0f;
 
         /// <summary>
         /// fetches the global AssertSpecial flags.
@@ -1852,21 +1562,21 @@ namespace SwissArmyKnifeForMugen
             bool[] flagArray = new bool[11];
             if (baseAddr == 0U)
                 return flagArray;
-            int int32Data1 = this._GetInt32Data(baseAddr, this._addr_db.ASSERT_1_PLAYER_OFFSET);
+            int int32Data1 = this.watcher.GetInt32Data(baseAddr, this.watcher.MugenDatabase.ASSERT_1_PLAYER_OFFSET);
             if (int32Data1 == 0)
                 return flagArray;
             flagArray[0] = (uint)(int32Data1 & 1) > 0U;
             flagArray[1] = (uint)(int32Data1 & 256) > 0U;
             flagArray[2] = (uint)(int32Data1 & 65536) > 0U;
             flagArray[3] = (uint)(int32Data1 & 16777216) > 0U;
-            int int32Data2 = this._GetInt32Data(baseAddr, this._addr_db.ASSERT_1_PLAYER_OFFSET + 4U);
+            int int32Data2 = this.watcher.GetInt32Data(baseAddr, this.watcher.MugenDatabase.ASSERT_1_PLAYER_OFFSET + 4U);
             if (int32Data2 == 0)
                 return flagArray;
             flagArray[4] = (uint)(int32Data2 & 1) > 0U;
             flagArray[5] = (uint)(int32Data2 & 256) > 0U;
             flagArray[6] = (uint)(int32Data2 & 65536) > 0U;
             flagArray[7] = (uint)(int32Data2 & 16777216) > 0U;
-            int int32Data3 = this._GetInt32Data(baseAddr, this._addr_db.ASSERT_1_PLAYER_OFFSET + 8U);
+            int int32Data3 = this.watcher.GetInt32Data(baseAddr, this.watcher.MugenDatabase.ASSERT_1_PLAYER_OFFSET + 8U);
             if (int32Data3 == 0)
                 return flagArray;
             flagArray[8] = (uint)(int32Data3 & 1) > 0U;
@@ -1884,43 +1594,43 @@ namespace SwissArmyKnifeForMugen
         private bool[] GetSelfAssertSpecials(uint playerAddr)
         {
             bool[] flagArray = new bool[9];
-            if (!(this._addr_db is Mugen11A4DB))
+            if (!(this.watcher.MugenDatabase is Mugen11A4DB))
                 return new bool[0];
             if (playerAddr == 0U)
                 return flagArray;
-            int int32Data1 = this._GetInt32Data(playerAddr, this._addr_db.SELF_ASSERT_PLAYER_OFFSET);
+            int int32Data1 = this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.SELF_ASSERT_PLAYER_OFFSET);
             if (int32Data1 == 0)
                 return flagArray;
             flagArray[0] = (uint)(int32Data1 & 1) > 0U;
             flagArray[1] = (uint)(int32Data1 & 256) > 0U;
             flagArray[2] = (uint)(int32Data1 & 65536) > 0U;
             flagArray[3] = (uint)(int32Data1 & 16777216) > 0U;
-            int int32Data2 = this._GetInt32Data(playerAddr, this._addr_db.SELF_ASSERT_PLAYER_OFFSET + 4U);
+            int int32Data2 = this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.SELF_ASSERT_PLAYER_OFFSET + 4U);
             if (int32Data2 == 0)
                 return flagArray;
             flagArray[4] = (uint)(int32Data2 & 1) > 0U;
             flagArray[5] = (uint)(int32Data2 & 256) > 0U;
             flagArray[6] = (uint)(int32Data2 & 65536) > 0U;
             flagArray[7] = (uint)(int32Data2 & 16777216) > 0U;
-            int int32Data3 = this._GetInt32Data(playerAddr, this._addr_db.SELF_ASSERT_PLAYER_OFFSET + 8U);
+            int int32Data3 = this.watcher.GetInt32Data(playerAddr, this.watcher.MugenDatabase.SELF_ASSERT_PLAYER_OFFSET + 8U);
             if (int32Data3 == 0)
                 return flagArray;
             flagArray[8] = (uint)(int32Data3 & 1) > 0U;
             return flagArray;
         }
 
-        private int GetNoko(uint baseAddr) => baseAddr == 0U || (this._GetInt32Data(baseAddr, this._addr_db.ASSERT_1_PLAYER_OFFSET) & 65536) == 0 ? 0 : 1;
+        private int GetNoko(uint baseAddr) => baseAddr == 0U || (this.watcher.GetInt32Data(baseAddr, this.watcher.MugenDatabase.ASSERT_1_PLAYER_OFFSET) & 65536) == 0 ? 0 : 1;
 
-        private int GetIntro(uint baseAddr) => baseAddr == 0U || (this._GetInt32Data(baseAddr, this._addr_db.ASSERT_1_PLAYER_OFFSET) & 1) == 0 ? 0 : 1;
+        private int GetIntro(uint baseAddr) => baseAddr == 0U || (this.watcher.GetInt32Data(baseAddr, this.watcher.MugenDatabase.ASSERT_1_PLAYER_OFFSET) & 1) == 0 ? 0 : 1;
 
-        private int GetRoundNotOver(uint baseAddr) => baseAddr == 0U || (this._GetInt32Data(baseAddr, this._addr_db.ASSERT_1_PLAYER_OFFSET) & 256) == 0 ? 0 : 1;
+        private int GetRoundNotOver(uint baseAddr) => baseAddr == 0U || (this.watcher.GetInt32Data(baseAddr, this.watcher.MugenDatabase.ASSERT_1_PLAYER_OFFSET) & 256) == 0 ? 0 : 1;
 
-        private int GetTimerFreeze(uint baseAddr) => baseAddr == 0U || (this._GetInt32Data(baseAddr, this._addr_db.ASSERT_1_PLAYER_OFFSET + 4U) & 16777216) == 0 ? 0 : 1;
+        private int GetTimerFreeze(uint baseAddr) => baseAddr == 0U || (this.watcher.GetInt32Data(baseAddr, this.watcher.MugenDatabase.ASSERT_1_PLAYER_OFFSET + 4U) & 16777216) == 0 ? 0 : 1;
 
         private void SetCtrl(uint playerAddr, bool ctrl)
         {
             int num = ctrl ? 1 : 0;
-            this._SetInt32Data(playerAddr, this._addr_db.CTRL_PLAYER_OFFSET, num);
+            this.watcher.SetInt32Data(playerAddr, this.watcher.MugenDatabase.CTRL_PLAYER_OFFSET, num);
         }
 
         /// <summary>
@@ -1931,19 +1641,19 @@ namespace SwissArmyKnifeForMugen
         private void DeletePlayer(uint playerAddr, bool exist)
         {
             int num = exist ? 1 : 0;
-            this._SetInt32Data(playerAddr, this._addr_db.EXIST_PLAYER_OFFSET, num);
+            this.watcher.SetInt32Data(playerAddr, this.watcher.MugenDatabase.EXIST_PLAYER_OFFSET, num);
         }
 
         private void SetSpeedMode(uint baseAddr, bool isSpeedMode)
         {
             int num = isSpeedMode ? 1 : 0;
-            this._SetInt32Data(baseAddr, this._addr_db.SPEED_MODE_BASE_OFFSET, num);
+            this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.SPEED_MODE_BASE_OFFSET, num);
         }
 
         private void SetSkipMode(uint baseAddr, bool isSkipMode)
         {
             int num = isSkipMode ? this._skipModeFrames : -1;
-            this._SetInt32Data(baseAddr, this._addr_db.SKIP_MODE_BASE_OFFSET, num);
+            this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.SKIP_MODE_BASE_OFFSET, num);
         }
 
         /// <summary>
@@ -1955,13 +1665,13 @@ namespace SwissArmyKnifeForMugen
         {
             if (isDebugMode)
             {
-                this._SetInt32Data(baseAddr, this._addr_db.DEBUG_MODE_BASE_OFFSET, 0);
-                this._SetInt32Data(baseAddr, this._addr_db.DEBUG_TARGET_BASE_OFFSET, 1);
+                this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.DEBUG_MODE_BASE_OFFSET, 0);
+                this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.DEBUG_TARGET_BASE_OFFSET, 1);
             }
             else
             {
-                this._SetInt32Data(baseAddr, this._addr_db.DEBUG_MODE_BASE_OFFSET, 0);
-                this._SetInt32Data(baseAddr, this._addr_db.DEBUG_TARGET_BASE_OFFSET, 0);
+                this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.DEBUG_MODE_BASE_OFFSET, 0);
+                this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.DEBUG_TARGET_BASE_OFFSET, 0);
             }
         }
 
@@ -1969,13 +1679,18 @@ namespace SwissArmyKnifeForMugen
         {
             if (isDebugMode)
             {
-                this._SetInt32Data(baseAddr, this._addr_db.DEBUG_MODE_BASE_OFFSET, 1);
-                if (this.GetDebugTargetNo(baseAddr) != 0)
+                this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.DEBUG_MODE_BASE_OFFSET, 1);
+                if (GameUtils.GetDebugTargetNo(this.watcher) != 0)
                     return;
-                this._SetInt32Data(baseAddr, this._addr_db.DEBUG_TARGET_BASE_OFFSET, 1);
+                this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.DEBUG_TARGET_BASE_OFFSET, 1);
             }
             else
-                this._SetInt32Data(baseAddr, this._addr_db.DEBUG_MODE_BASE_OFFSET, 0);
+                this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.DEBUG_MODE_BASE_OFFSET, 0);
+        }
+
+        public MugenProcessWatcher GetWatcher()
+        {
+            return this.watcher;
         }
 
         /// <summary>
@@ -1983,7 +1698,7 @@ namespace SwissArmyKnifeForMugen
         /// </summary>
         /// <param name="baseAddr"></param>
         /// <param name="targetNo"></param>
-        private void SetDebugTargetNo(uint baseAddr, int targetNo) => this._SetInt32Data(baseAddr, this._addr_db.DEBUG_TARGET_BASE_OFFSET, targetNo);
+        private void SetDebugTargetNo(uint baseAddr, int targetNo) => this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.DEBUG_TARGET_BASE_OFFSET, targetNo);
 
         /// <summary>
         /// sets the color of the debug text.
@@ -1992,7 +1707,7 @@ namespace SwissArmyKnifeForMugen
         /// <param name="debugColor">DebugColor enum to use</param>
         private void SetDebugColor(uint baseAddr, DebugColor debugColor)
         {
-            if (this._addr_db.USE_NEW_DEBUG_COLOR_ADDR)
+            if (this.watcher.MugenDatabase.USE_NEW_DEBUG_COLOR_ADDR)
             {
                 this.SetDebugColorEX(baseAddr, debugColor);
                 return;
@@ -2000,46 +1715,46 @@ namespace SwissArmyKnifeForMugen
             switch (debugColor)
             {
                 case DebugColor.WHITE:
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_TIME_BASE_OFFSET, (int)byte.MaxValue);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_R_BASE_OFFSET, 0);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_G_BASE_OFFSET, 0);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_B_BASE_OFFSET, 0);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_TIME_BASE_OFFSET, (int)byte.MaxValue);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_R_BASE_OFFSET, 0);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_G_BASE_OFFSET, 0);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_B_BASE_OFFSET, 0);
                     break;
                 case DebugColor.YELLOW:
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_TIME_BASE_OFFSET, (int)byte.MaxValue);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_R_BASE_OFFSET, 0);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_G_BASE_OFFSET, 0);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_B_BASE_OFFSET, -255);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_TIME_BASE_OFFSET, (int)byte.MaxValue);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_R_BASE_OFFSET, 0);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_G_BASE_OFFSET, 0);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_B_BASE_OFFSET, -255);
                     break;
                 case DebugColor.PURPLE:
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_TIME_BASE_OFFSET, (int)byte.MaxValue);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_R_BASE_OFFSET, 0);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_G_BASE_OFFSET, -255);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_B_BASE_OFFSET, 0);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_TIME_BASE_OFFSET, (int)byte.MaxValue);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_R_BASE_OFFSET, 0);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_G_BASE_OFFSET, -255);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_B_BASE_OFFSET, 0);
                     break;
                 case DebugColor.RED:
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_TIME_BASE_OFFSET, (int)byte.MaxValue);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_R_BASE_OFFSET, 0);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_G_BASE_OFFSET, -255);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_B_BASE_OFFSET, -255);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_TIME_BASE_OFFSET, (int)byte.MaxValue);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_R_BASE_OFFSET, 0);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_G_BASE_OFFSET, -255);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_B_BASE_OFFSET, -255);
                     break;
                 case DebugColor.BLACK:
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_TIME_BASE_OFFSET, (int)byte.MaxValue);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_R_BASE_OFFSET, -255);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_G_BASE_OFFSET, -255);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_B_BASE_OFFSET, -255);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_TIME_BASE_OFFSET, (int)byte.MaxValue);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_R_BASE_OFFSET, -255);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_G_BASE_OFFSET, -255);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_B_BASE_OFFSET, -255);
                     break;
                 case DebugColor.GREEN:
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_TIME_BASE_OFFSET, (int)byte.MaxValue);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_R_BASE_OFFSET, -255);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_G_BASE_OFFSET, 0);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_B_BASE_OFFSET, -255);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_TIME_BASE_OFFSET, (int)byte.MaxValue);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_R_BASE_OFFSET, -255);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_G_BASE_OFFSET, 0);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_B_BASE_OFFSET, -255);
                     break;
                 default:
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_TIME_BASE_OFFSET, 1);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_R_BASE_OFFSET, 0);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_G_BASE_OFFSET, 0);
-                    this._SetInt32Data(baseAddr, this._addr_db.PAL_B_BASE_OFFSET, 0);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_TIME_BASE_OFFSET, 1);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_R_BASE_OFFSET, 0);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_G_BASE_OFFSET, 0);
+                    this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.PAL_B_BASE_OFFSET, 0);
                     break;
             }
         }
@@ -2052,13 +1767,13 @@ namespace SwissArmyKnifeForMugen
         private void SetDebugColorEX(uint baseAddr, DebugColor debugColor)
         {
             // iterate all the new debug color offsets
-            foreach (uint colorBase in this._addr_db.NEW_DEBUG_COLOR_OFFSETS)
+            foreach (uint colorBase in this.watcher.MugenDatabase.NEW_DEBUG_COLOR_OFFSETS)
             {
                 this.ApplyDebugColorInt(baseAddr, colorBase, debugColor);
             }
             // stateno is split up, so apply differently
-            if (this._addr_db.NEW_DEBUG_COLOR_SN_OFFSETS.Length == 3)
-                this.ApplyDebugColorSplit(baseAddr, this._addr_db.NEW_DEBUG_COLOR_SN_OFFSETS, debugColor);
+            if (this.watcher.MugenDatabase.NEW_DEBUG_COLOR_SN_OFFSETS.Length == 3)
+                this.ApplyDebugColorSplit(baseAddr, this.watcher.MugenDatabase.NEW_DEBUG_COLOR_SN_OFFSETS, debugColor);
         }
 
         /// <summary>
@@ -2075,44 +1790,44 @@ namespace SwissArmyKnifeForMugen
             switch (debugColor)
             {
                 case DebugColor.WHITE:
-                    this._SetInt32Data(offsets[0], 1, 256);
-                    this._SetInt32Data(offsets[1], 1, 256);
-                    this._SetInt32Data(offsets[2], 1, 256);
+                    this.watcher.SetInt32Data(offsets[0], 1, 256);
+                    this.watcher.SetInt32Data(offsets[1], 1, 256);
+                    this.watcher.SetInt32Data(offsets[2], 1, 256);
                     break;
                 case DebugColor.YELLOW:
-                    this._SetInt32Data(offsets[0], 1, 0);
-                    this._SetInt32Data(offsets[1], 1, 256);
-                    this._SetInt32Data(offsets[2], 1, 256);
+                    this.watcher.SetInt32Data(offsets[0], 1, 0);
+                    this.watcher.SetInt32Data(offsets[1], 1, 256);
+                    this.watcher.SetInt32Data(offsets[2], 1, 256);
                     break;
                 case DebugColor.PURPLE:
-                    this._SetInt32Data(offsets[0], 1, 256);
-                    this._SetInt32Data(offsets[1], 1, 0);
-                    this._SetInt32Data(offsets[2], 1, 256);
+                    this.watcher.SetInt32Data(offsets[0], 1, 256);
+                    this.watcher.SetInt32Data(offsets[1], 1, 0);
+                    this.watcher.SetInt32Data(offsets[2], 1, 256);
                     break;
                 case DebugColor.RED:
-                    this._SetInt32Data(offsets[0], 1, 0);
-                    this._SetInt32Data(offsets[1], 1, 0);
-                    this._SetInt32Data(offsets[2], 1, 256);
+                    this.watcher.SetInt32Data(offsets[0], 1, 0);
+                    this.watcher.SetInt32Data(offsets[1], 1, 0);
+                    this.watcher.SetInt32Data(offsets[2], 1, 256);
                     break;
                 case DebugColor.BLACK:
-                    this._SetInt32Data(offsets[0], 1, 0);
-                    this._SetInt32Data(offsets[1], 1, 0);
-                    this._SetInt32Data(offsets[2], 1, 0);
+                    this.watcher.SetInt32Data(offsets[0], 1, 0);
+                    this.watcher.SetInt32Data(offsets[1], 1, 0);
+                    this.watcher.SetInt32Data(offsets[2], 1, 0);
                     break;
                 case DebugColor.GREEN:
-                    this._SetInt32Data(offsets[0], 1, 0);
-                    this._SetInt32Data(offsets[1], 1, 256);
-                    this._SetInt32Data(offsets[2], 1, 0);
+                    this.watcher.SetInt32Data(offsets[0], 1, 0);
+                    this.watcher.SetInt32Data(offsets[1], 1, 256);
+                    this.watcher.SetInt32Data(offsets[2], 1, 0);
                     break;
                 case DebugColor.CUSTOM:
-                    this._SetInt32Data(offsets[0], 1, this.customDebugColors[2]);
-                    this._SetInt32Data(offsets[1], 1, this.customDebugColors[1]);
-                    this._SetInt32Data(offsets[2], 1, this.customDebugColors[0]);
+                    this.watcher.SetInt32Data(offsets[0], 1, this.customDebugColors[2]);
+                    this.watcher.SetInt32Data(offsets[1], 1, this.customDebugColors[1]);
+                    this.watcher.SetInt32Data(offsets[2], 1, this.customDebugColors[0]);
                     break;
                 default:
-                    this._SetInt32Data(offsets[0], 1, 256);
-                    this._SetInt32Data(offsets[1], 1, 256);
-                    this._SetInt32Data(offsets[2], 1, 256);
+                    this.watcher.SetInt32Data(offsets[0], 1, 256);
+                    this.watcher.SetInt32Data(offsets[1], 1, 256);
+                    this.watcher.SetInt32Data(offsets[2], 1, 256);
                     break;
             }
         }
@@ -2130,44 +1845,44 @@ namespace SwissArmyKnifeForMugen
             switch (debugColor)
             {
                 case DebugColor.WHITE:
-                    this._SetInt32Data(colorBase, 1, 256);
-                    this._SetInt32Data(colorBase, 6, 256);
-                    this._SetInt32Data(colorBase, 11, 256);
+                    this.watcher.SetInt32Data(colorBase, 1, 256);
+                    this.watcher.SetInt32Data(colorBase, 6, 256);
+                    this.watcher.SetInt32Data(colorBase, 11, 256);
                     break;
                 case DebugColor.YELLOW:
-                    this._SetInt32Data(colorBase, 1, 0);
-                    this._SetInt32Data(colorBase, 6, 256);
-                    this._SetInt32Data(colorBase, 11, 256);
+                    this.watcher.SetInt32Data(colorBase, 1, 0);
+                    this.watcher.SetInt32Data(colorBase, 6, 256);
+                    this.watcher.SetInt32Data(colorBase, 11, 256);
                     break;
                 case DebugColor.PURPLE:
-                    this._SetInt32Data(colorBase, 1, 256);
-                    this._SetInt32Data(colorBase, 6, 0);
-                    this._SetInt32Data(colorBase, 11, 256);
+                    this.watcher.SetInt32Data(colorBase, 1, 256);
+                    this.watcher.SetInt32Data(colorBase, 6, 0);
+                    this.watcher.SetInt32Data(colorBase, 11, 256);
                     break;
                 case DebugColor.RED:
-                    this._SetInt32Data(colorBase, 1, 0);
-                    this._SetInt32Data(colorBase, 6, 0);
-                    this._SetInt32Data(colorBase, 11, 256);
+                    this.watcher.SetInt32Data(colorBase, 1, 0);
+                    this.watcher.SetInt32Data(colorBase, 6, 0);
+                    this.watcher.SetInt32Data(colorBase, 11, 256);
                     break;
                 case DebugColor.BLACK:
-                    this._SetInt32Data(colorBase, 1, 0);
-                    this._SetInt32Data(colorBase, 6, 0);
-                    this._SetInt32Data(colorBase, 11, 0);
+                    this.watcher.SetInt32Data(colorBase, 1, 0);
+                    this.watcher.SetInt32Data(colorBase, 6, 0);
+                    this.watcher.SetInt32Data(colorBase, 11, 0);
                     break;
                 case DebugColor.GREEN:
-                    this._SetInt32Data(colorBase, 1, 0);
-                    this._SetInt32Data(colorBase, 6, 256);
-                    this._SetInt32Data(colorBase, 11, 0);
+                    this.watcher.SetInt32Data(colorBase, 1, 0);
+                    this.watcher.SetInt32Data(colorBase, 6, 256);
+                    this.watcher.SetInt32Data(colorBase, 11, 0);
                     break;
                 case DebugColor.CUSTOM:
-                    this._SetInt32Data(colorBase, 1, this.customDebugColors[2]);
-                    this._SetInt32Data(colorBase, 6, this.customDebugColors[1]);
-                    this._SetInt32Data(colorBase, 11, this.customDebugColors[0]);
+                    this.watcher.SetInt32Data(colorBase, 1, this.customDebugColors[2]);
+                    this.watcher.SetInt32Data(colorBase, 6, this.customDebugColors[1]);
+                    this.watcher.SetInt32Data(colorBase, 11, this.customDebugColors[0]);
                     break;
                 default:
-                    this._SetInt32Data(colorBase, 1, 256);
-                    this._SetInt32Data(colorBase, 6, 256);
-                    this._SetInt32Data(colorBase, 11, 256);
+                    this.watcher.SetInt32Data(colorBase, 1, 256);
+                    this.watcher.SetInt32Data(colorBase, 6, 256);
+                    this.watcher.SetInt32Data(colorBase, 11, 256);
                     break;
             }
         }
@@ -2183,12 +1898,12 @@ namespace SwissArmyKnifeForMugen
         /// <param name="baseAddr"></param>
         public void ForceTimeOver(uint baseAddr)
         {
-            int roundTime = this.GetRoundTime(baseAddr);
+            int roundTime = GameUtils.GetRoundTime(this.watcher);
             if (roundTime > 30)
             {
                 this._timeOverCount1 = 0;
                 this._timeOverCount2 = 0;
-                this._SetInt32Data(baseAddr, this._addr_db.ROUND_TIME_BASE_OFFSET, 30);
+                this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.ROUND_TIME_BASE_OFFSET, 30);
             }
             else
             {
@@ -2199,8 +1914,8 @@ namespace SwissArmyKnifeForMugen
                 if (this._timeOverCount1 <= 120)
                     return;
                 this._timeOverCount1 = 0;
-                this._SetInt32Data(baseAddr, this._addr_db.ROUND_TIME_BASE_OFFSET, 0);
-                this._SetInt32Data(baseAddr, this._addr_db.ROUND_STATE_BASE_OFFSET, 3);
+                this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.ROUND_TIME_BASE_OFFSET, 0);
+                this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.ROUND_STATE_BASE_OFFSET, 3);
             }
         }
 
@@ -2211,25 +1926,25 @@ namespace SwissArmyKnifeForMugen
         /// <param name="keyCode"></param>
         public void _InjectCommand(int keyCode)
         {
-            if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4)
+            if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN11A4)
             {
-                this._SetInt32Data(0U, this._addr_db.CMD_KEY_ADDR, keyCode | 256);
-                this._SetInt32Data(0U, this._addr_db.CMD_KEY_ADDR + 4U, keyCode | 768);
-                this._SetInt32Data(0U, this._addr_db.CMD_NEXT_INDEX_ADDR, 3);
-                this._SetInt32Data(0U, this._addr_db.CMD_CURRENT_INDEX_ADDR, 0);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_KEY_ADDR, keyCode | 256);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_KEY_ADDR + 4U, keyCode | 768);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_NEXT_INDEX_ADDR, 3);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_CURRENT_INDEX_ADDR, 0);
             }
-            else if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10)
+            else if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN10)
             {
-                this._SetInt32Data(0U, this._addr_db.CMD_KEY_ADDR, keyCode | 256);
-                this._SetInt32Data(0U, this._addr_db.CMD_KEY_ADDR + 4U, keyCode | 768);
-                this._SetInt32Data(0U, this._addr_db.CMD_CURRENT_INDEX_ADDR, 0);
-                this._SetInt32Data(0U, this._addr_db.CMD_NEXT_INDEX_ADDR, 1);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_KEY_ADDR, keyCode | 256);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_KEY_ADDR + 4U, keyCode | 768);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_CURRENT_INDEX_ADDR, 0);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_NEXT_INDEX_ADDR, 1);
             }
             else
             {
-                this._SetInt32Data(0U, this._addr_db.CMD_KEY_ADDR, keyCode);
-                this._SetInt32Data(0U, this._addr_db.CMD_CURRENT_INDEX_ADDR, 0);
-                this._SetInt32Data(0U, this._addr_db.CMD_NEXT_INDEX_ADDR, 1);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_KEY_ADDR, keyCode);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_CURRENT_INDEX_ADDR, 0);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_NEXT_INDEX_ADDR, 1);
             }
         }
 
@@ -2240,25 +1955,25 @@ namespace SwissArmyKnifeForMugen
         /// <param name="keyCode"></param>
         public void InjectCommand(int keyCode)
         {
-            if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11A4 || this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN11B1)
+            if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN11A4 || this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN11B1)
             {
-                this._SetInt32Data(0U, this._addr_db.CMD_KEY_ADDR, keyCode | 256);
-                this._SetInt32Data(0U, this._addr_db.CMD_KEY_ADDR + 4U, keyCode | 768);
-                this._SetInt32Data(0U, this._addr_db.CMD_NEXT_INDEX_ADDR, 1);
-                this._SetInt32Data(0U, this._addr_db.CMD_CURRENT_INDEX_ADDR, 0);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_KEY_ADDR, keyCode | 256);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_KEY_ADDR + 4U, keyCode | 768);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_NEXT_INDEX_ADDR, 1);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_CURRENT_INDEX_ADDR, 0);
             }
-            else if (this._mugen_type == MugenWindow.MugenType_t.MUGEN_TYPE_MUGEN10)
+            else if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN10)
             {
-                this._SetInt32Data(0U, this._addr_db.CMD_KEY_ADDR, keyCode | 256);
-                this._SetInt32Data(0U, this._addr_db.CMD_KEY_ADDR + 4U, keyCode | 768);
-                this._SetInt32Data(0U, this._addr_db.CMD_CURRENT_INDEX_ADDR, 0);
-                this._SetInt32Data(0U, this._addr_db.CMD_NEXT_INDEX_ADDR, 1);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_KEY_ADDR, keyCode | 256);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_KEY_ADDR + 4U, keyCode | 768);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_CURRENT_INDEX_ADDR, 0);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_NEXT_INDEX_ADDR, 1);
             }
             else
             {
-                this._SetInt32Data(0U, this._addr_db.CMD_CURRENT_INDEX_ADDR, 0);
-                this._SetInt32Data(0U, this._addr_db.CMD_NEXT_INDEX_ADDR, 1);
-                this._SetInt32Data(0U, this._addr_db.CMD_KEY_ADDR, keyCode);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_CURRENT_INDEX_ADDR, 0);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_NEXT_INDEX_ADDR, 1);
+                this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.CMD_KEY_ADDR, keyCode);
             }
         }
 
@@ -2268,18 +1983,18 @@ namespace SwissArmyKnifeForMugen
         /// <returns></returns>
         public int CheckNextCommand()
         {
-            int int32Data = this._GetInt32Data(0U, this._addr_db.CMD_NEXT_INDEX_ADDR);
+            int int32Data = this.watcher.GetInt32Data(0U, this.watcher.MugenDatabase.CMD_NEXT_INDEX_ADDR);
             int num = -1;
             if (int32Data > 0)
-                num = this._GetInt32Data(0U, (uint)((ulong)this._addr_db.CMD_KEY_ADDR + (ulong)(int32Data * 4)));
+                num = this.watcher.GetInt32Data(0U, (uint)((ulong)this.watcher.MugenDatabase.CMD_KEY_ADDR + (ulong)(int32Data * 4)));
             return num;
         }
 
         public void SetPaused(bool isPaused)
         {
-            if (this._addr_db is Mugen11A4DB)
-                this._SetInt32Data(this.GetBaseAddr(), this._addr_db.PAUSE_ADDR, isPaused ? 1 : 0);
-            this._SetInt32Data(0U, this._addr_db.PAUSE_ADDR, isPaused ? 1 : 0);
+            if (this.watcher.MugenDatabase is Mugen11A4DB)
+                this.watcher.SetInt32Data((uint)GameUtils.GetBaseAddress(this.watcher), this.watcher.MugenDatabase.PAUSE_ADDR, isPaused ? 1 : 0);
+            this.watcher.SetInt32Data(0U, this.watcher.MugenDatabase.PAUSE_ADDR, isPaused ? 1 : 0);
         }
 
         public void SetSpeedMode(bool isSpeedMode)
@@ -2346,7 +2061,7 @@ namespace SwissArmyKnifeForMugen
         /// </summary>
         public void InjectStepCommand()
         {
-            if (this._mugen_type != MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN)
+            if (this.watcher.MugenVersion != MugenType_t.MUGEN_TYPE_WINMUGEN)
                 this.InjectCommand(46);
             else
                 this.InjectCommand(70);
@@ -2354,7 +2069,7 @@ namespace SwissArmyKnifeForMugen
 
         public void InjectESC()
         {
-            if (this._mugen_type != MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN)
+            if (this.watcher.MugenVersion != MugenType_t.MUGEN_TYPE_WINMUGEN)
                 this._InjectCommand(27);
             else
                 this.InjectCommand(1);
@@ -2362,7 +2077,7 @@ namespace SwissArmyKnifeForMugen
 
         public void InjectF4()
         {
-            if (this._mugen_type != MugenWindow.MugenType_t.MUGEN_TYPE_WINMUGEN)
+            if (this.watcher.MugenVersion != MugenType_t.MUGEN_TYPE_WINMUGEN)
                 this.InjectCommand(29);
             else
                 this.InjectCommand(62);
@@ -2377,8 +2092,8 @@ namespace SwissArmyKnifeForMugen
             string[] name = new string[60];
             for (int index = 0; index < 60; ++index)
             {
-                uint playerAddr = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)(index * 4)));
-                if (playerAddr != 0U && this.DoesExist(playerAddr))
+                uint playerAddr = (uint)GameUtils.GetPlayerAddress(this.watcher, baseAddr, index + 1);
+                if (playerAddr != 0U && PlayerUtils.DoesPlayerExist(this.watcher, playerAddr))
                 {
                     playerId[index] = this.GetPlayerId(playerAddr);
                     helperId[index] = this.GetHelperId(playerAddr);
@@ -2404,8 +2119,8 @@ namespace SwissArmyKnifeForMugen
         {
             for (int index = 0; index < 60; ++index)
             {
-                uint playerAddr = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)(index * 4)));
-                if (playerAddr != 0U && this.DoesExist(playerAddr))
+                uint playerAddr = (uint)GameUtils.GetPlayerAddress(this.watcher, baseAddr, index + 1);
+                if (playerAddr != 0U && PlayerUtils.DoesPlayerExist(this.watcher, playerAddr))
                 {
                     this.mugenPlayerId[index] = this.GetPlayerId(playerAddr);
                     this.muenHelperId[index] = index < 4 ? -1 : this.GetHelperId(playerAddr);
@@ -2434,7 +2149,7 @@ namespace SwissArmyKnifeForMugen
                 return;
             uint playerAddr = 0;
             if (this._varInspectTargetNo > 0)
-                playerAddr = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)((this._varInspectTargetNo - 1) * 4)));
+                playerAddr = (uint) GameUtils.GetPlayerAddress(this.watcher, baseAddr, this._varInspectTargetNo);
             int playerId = 0;
             if (playerAddr != 0U)
                 playerId = this.GetPlayerId(playerAddr);
@@ -2511,7 +2226,7 @@ namespace SwissArmyKnifeForMugen
         {
             uint playerAddr = 0;
             if (this._varInspectTargetNo > 0)
-                playerAddr = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)((this._varInspectTargetNo - 1) * 4)));
+                playerAddr = (uint)GameUtils.GetPlayerAddress(this.watcher, baseAddr, this._varInspectTargetNo);
             int playerId = 0;
             if (playerAddr != 0U)
                 playerId = this.GetPlayerId(playerAddr);
@@ -2523,13 +2238,13 @@ namespace SwissArmyKnifeForMugen
             {
                 case 1:
                 case 3:
-                    this.mugenSysInfo.win = this.IsTeam1Win(baseAddr) ? 1 : 0;
-                    this.mugenSysInfo.lose = this.IsTeam2Win(baseAddr) ? 1 : 0;
+                    this.mugenSysInfo.win = GameUtils.IsTeam1Win(this.watcher) ? 1 : 0;
+                    this.mugenSysInfo.lose = GameUtils.IsTeam2Win(this.watcher) ? 1 : 0;
                     break;
                 case 2:
                 case 4:
-                    this.mugenSysInfo.win = this.IsTeam2Win(baseAddr) ? 1 : 0;
-                    this.mugenSysInfo.lose = this.IsTeam1Win(baseAddr) ? 1 : 0;
+                    this.mugenSysInfo.win = GameUtils.IsTeam2Win(this.watcher) ? 1 : 0;
+                    this.mugenSysInfo.lose = GameUtils.IsTeam1Win(this.watcher) ? 1 : 0;
                     break;
                 default:
                     this.mugenSysInfo.win = -1;
@@ -2540,8 +2255,8 @@ namespace SwissArmyKnifeForMugen
             this.mugenSysInfo.stateno = this.GetStateNo(playerAddr);
             this.mugenSysInfo.specialstateno = !this._isDebugBreakMode ? 0 : this.GetSpecialStateNo(playerAddr);
             this.mugenSysInfo.prevstateno = this.GetPrevStateNo(playerAddr);
-            this.mugenSysInfo.roundstate = this.GetRoundState(baseAddr);
-            this.mugenSysInfo.roundtime = this.GetRoundTime(baseAddr);
+            this.mugenSysInfo.roundstate = GameUtils.GetRoundState(this.watcher);
+            this.mugenSysInfo.roundtime = GameUtils.GetRoundTime(this.watcher);
             this.mugenSysInfo.power = this.GetPower(playerAddr);
             this.mugenSysInfo.ctrl = this.GetCtrl(playerAddr);
             this.mugenSysInfo.damage = this.GetDamage(playerAddr);
@@ -2632,7 +2347,7 @@ namespace SwissArmyKnifeForMugen
                 errorRounds = errorRounds,
                 canceledRounds = canceledRounds
             });
-            if (this.p == null)
+            if (this.watcher.GetMugenProcess() == null)
                 return;
             this.BeginInvoke((Action)(() => GameLogger.MainObj().DumpCharData(displayName, palno)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
         }
@@ -2681,7 +2396,7 @@ namespace SwissArmyKnifeForMugen
                 errorRounds = errorRounds,
                 canceledRounds = canceledRounds
             });
-            if (this.p == null)
+            if (this.watcher.GetMugenProcess() == null)
                 return;
             this.BeginInvoke((Action)(() => GameLogger.MainObj().DumpCharDataEx(displayName)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
         }
@@ -2706,19 +2421,19 @@ namespace SwissArmyKnifeForMugen
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_NONE:
                     return (TriggerDatabase.TriggerValue_t)null;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P1:
-                    num = this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET);
+                    num = GameUtils.GetP1Addr(this.watcher);
                     rootAdder = num;
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P2:
-                    num = this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET + 4U);
+                    num = GameUtils.GetP2Addr(this.watcher);
                     rootAdder = num;
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P3:
-                    num = this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET + 8U);
+                    num = GameUtils.GetP3Addr(this.watcher);
                     rootAdder = num;
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P4:
-                    num = this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET + 12U);
+                    num = GameUtils.GetP4Addr(this.watcher);
                     rootAdder = num;
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_PLAYERID:
@@ -2753,7 +2468,7 @@ namespace SwissArmyKnifeForMugen
             // check to see if we offset the addr from player addr or base addr
             bool isOffsetFromBase = false;
             // get the exact offset
-            uint offs = TriggerDatabase.GetTriggerAddrForType(this._addr_db, triggerType, ref isOffsetFromBase);
+            uint offs = TriggerDatabase.GetTriggerAddrForType(this.watcher.MugenDatabase, triggerType, ref isOffsetFromBase);
             // find exact addr based on offsets
             if (isOffsetFromBase) addr = baseAddr + offs;
             else addr = num + offs;
@@ -2770,7 +2485,7 @@ namespace SwissArmyKnifeForMugen
                     break;
             }
             // if this is a GameTime based trigger, it's a custom monitor.
-            if (offs == this._addr_db.GAMETIME_BASE_OFFSET)
+            if (offs == this.watcher.MugenDatabase.GAMETIME_BASE_OFFSET)
             {
                 // for NumExplod/NumTarget, pass the player addr.
                 // otherwise pass the root addr.
@@ -2792,11 +2507,11 @@ namespace SwissArmyKnifeForMugen
                     break;
                 case TriggerDatabase.ValueType.VALUE_INT:
                     triggerValueT.valueType = TriggerDatabase.ValueType.VALUE_INT;
-                    triggerValueT.SetInt32Value(this._GetInt32Data(addr, 0U));
+                    triggerValueT.SetInt32Value(this.watcher.GetInt32Data(addr, 0U));
                     break;
                 case TriggerDatabase.ValueType.VALUE_FLOAT:
                     triggerValueT.valueType = TriggerDatabase.ValueType.VALUE_FLOAT;
-                    triggerValueT.SetSingleValue(this._GetFloatData(addr, 0U));
+                    triggerValueT.SetSingleValue(this.watcher.GetFloatData(addr, 0U));
                     break;
             }
             return triggerValueT;
@@ -2935,7 +2650,7 @@ namespace SwissArmyKnifeForMugen
             uint projBase = this.GetProjBaseAdder(this.GetPlayerAddrFromId(baseAddr, playerID));
             uint projList = this.GetProjListAdder(projBase);
             // get max proj count
-            int maxProj = this._GetInt32Data(projBase, this._addr_db.PROJ_MAX_PROJ_BASE_OFFSET);
+            int maxProj = this.watcher.GetInt32Data(projBase, this.watcher.MugenDatabase.PROJ_MAX_PROJ_BASE_OFFSET);
             int num = 0;
             // iterate all proj
             for (uint i = 0; i < maxProj; i++)
@@ -2961,8 +2676,8 @@ namespace SwissArmyKnifeForMugen
             int num = 0;
             for (int index = 4; index < 60; ++index)
             {
-                uint playerAddr = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)(index * 4)));
-                if (playerAddr != 0U && this.DoesExist(playerAddr) && playerID == this.GetRootId(baseAddr, this.GetPlayerId(playerAddr)))
+                uint playerAddr = (uint) GameUtils.GetPlayerAddress(this.watcher, baseAddr, index + 1);
+                if (playerAddr != 0U && PlayerUtils.DoesPlayerExist(this.watcher, playerAddr) && playerID == this.GetRootId(baseAddr, this.GetPlayerId(playerAddr)))
                     num++;
             }
             return num;
@@ -2981,8 +2696,8 @@ namespace SwissArmyKnifeForMugen
             int num = 0;
             for (int index = 4; index < 60; ++index)
             {
-                uint playerAddr = this._GetPlayerAddr(baseAddr, (uint)((ulong)this._addr_db.PLAYER_1_BASE_OFFSET + (ulong)(index * 4)));
-                if (playerAddr != 0U && this.DoesExist(playerAddr) && playerID == this.GetRootId(baseAddr, this.GetPlayerId(playerAddr)) && helperID == this.GetHelperId(playerAddr))
+                uint playerAddr = (uint) GameUtils.GetPlayerAddress(this.watcher, baseAddr, index + 1);
+                if (playerAddr != 0U && PlayerUtils.DoesPlayerExist(this.watcher, playerAddr) && playerID == this.GetRootId(baseAddr, this.GetPlayerId(playerAddr)) && helperID == this.GetHelperId(playerAddr))
                     num++;
             }
             return num;
@@ -3005,16 +2720,16 @@ namespace SwissArmyKnifeForMugen
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_NONE:
                     return false;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P1:
-                    num = this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET);
+                    num = GameUtils.GetP1Addr(this.watcher);
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P2:
-                    num = this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET + 4U);
+                    num = GameUtils.GetP2Addr(this.watcher);
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P3:
-                    num = this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET + 8U);
+                    num = GameUtils.GetP3Addr(this.watcher);
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_P4:
-                    num = this._GetPlayerAddr(baseAddr, this._addr_db.PLAYER_1_BASE_OFFSET + 12U);
+                    num = GameUtils.GetP4Addr(this.watcher);
                     break;
                 case TriggerCheckTarget.Player_t.PlayerType.PLAYER_PLAYERID:
                     num = this.GetPlayerAddrFromId(baseAddr, targetPlayer.pid);
@@ -3043,7 +2758,7 @@ namespace SwissArmyKnifeForMugen
             // check to see if we offset the addr from player addr or base addr
             bool isOffsetFromBase = false;
             // get the exact offset
-            uint offs = TriggerDatabase.GetTriggerAddrForType(this._addr_db, triggerType, ref isOffsetFromBase);
+            uint offs = TriggerDatabase.GetTriggerAddrForType(this.watcher.MugenDatabase, triggerType, ref isOffsetFromBase);
             // find exact addr based on offsets
             if (isOffsetFromBase) targetAdder = baseAddr + offs;
             else targetAdder = num + offs;
@@ -3078,10 +2793,7 @@ namespace SwissArmyKnifeForMugen
                 return;
             byte[] buf = new byte[4];
             this.watchAddr = targetAdder;
-            if (MugenWindow.MainObj().ReadMemory((IntPtr)(long)this.watchAddr, ref buf, 4U) > 0)
-                this.WatchInitVal = BitConverter.ToUInt32(buf, 0);
-            else
-                this.watchAddr = 0U;
+            this.WatchInitVal = (uint) this.watcher.GetInt32Data(this.watchAddr, 0);
         }
 
         /// <summary>
@@ -3171,7 +2883,7 @@ namespace SwissArmyKnifeForMugen
                     {
                         MugenWindow.LDT_ENTRY lpSelectorEntry = new MugenWindow.LDT_ENTRY();
                         if (MugenWindow.GetThreadSelectorEntryEx(num1, context.SegFs, ref lpSelectorEntry))
-                            num2 = (uint)(this._GetInt32Data((uint)(lpSelectorEntry.HighWord.Bits.BaseHi << 24 | lpSelectorEntry.HighWord.Bits.BaseMid << 16) | (uint)lpSelectorEntry.BaseLow, 4U) - 8192);
+                            num2 = (uint)(this.watcher.GetInt32Data((uint)(lpSelectorEntry.HighWord.Bits.BaseHi << 24 | lpSelectorEntry.HighWord.Bits.BaseMid << 16) | (uint)lpSelectorEntry.BaseLow, 4U) - 8192);
                     }
                 }
             }
@@ -3206,8 +2918,8 @@ namespace SwissArmyKnifeForMugen
             bool flag6 = false;
             bool flag7 = false;
             bool flag8 = false;
-            int num1 = 0;
-            int num2 = 0;
+            int team1Wins = 0;
+            int team2Wins = 0;
             int trueTeam1WinCount = 0;
             int trueTeam2WinCount = 0;
             int num3 = 0;
@@ -3224,7 +2936,7 @@ namespace SwissArmyKnifeForMugen
             int palnoB2 = 0;
             int num5 = 300;
             int num6 = 0;
-            uint num7 = 0;
+            uint gameTime = 0;
             int num8 = 0;
             long num9 = 0;
             long num10 = 0;
@@ -3248,7 +2960,7 @@ namespace SwissArmyKnifeForMugen
             {
                 // attach the debug process to the Mugen process if triggers are set up and the next command is START
                 if (this.debugP == null && this._triggerCheckTarget != null && (this._triggerCheckTarget.IsDirty() && this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_START))
-                    this.debugP = this.debugControl.Attach(this.p.Id);
+                    this.debugP = this.debugControl.Attach(this.watcher.GetMugenProcess().Id);
                 // check trigger values and apply breaks here if needed
                 // there may already be a hw break in effect/coming in, so it's identified in this block
                 if (this.debugP != null && !this._isDebugBreakMode)
@@ -3562,14 +3274,14 @@ namespace SwissArmyKnifeForMugen
                                                 break;
                                         }
                                     }
-                                    uint p1Addr = this.GetP1Addr(baseAddr);
+                                    uint p1Addr = GameUtils.GetP1Addr(this.watcher);
                                     // for un-stopping mugen from trigger breakpoints
                                     if (!triggerValueValid || !flag6 || (p1Addr == 0U || this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_STOP))
                                     {
                                         this.debugControl.ContinueEvent(nativeEvent2, false);
                                         this.BeginInvoke((Action)(() => DebugForm.MainObj().DisableTriggerCheckResumeButton()));
                                         if (p1Addr == 0U)
-                                            this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this._mugen_type)));
+                                            this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
                                         this._isDebugBreakMode = false;
                                         break;
                                     }
@@ -3599,9 +3311,9 @@ namespace SwissArmyKnifeForMugen
                                         }
                                         this.debugP = (NativeDbgProcess)null;
                                     }
-                                    if (this.p != null && !this.p.HasExited)
+                                    if (this.watcher.CheckMugenProcessActive())
                                     {
-                                        this.p.Kill();
+                                        this.watcher.GetMugenProcess().Kill();
                                         break;
                                     }
                                     break;
@@ -3690,8 +3402,7 @@ namespace SwissArmyKnifeForMugen
                     uint num20 = 0;
                     // read current value of watchAddr
                     byte[] buf = new byte[4];
-                    if (MugenWindow.MainObj().ReadMemory((IntPtr)(long)this.watchAddr, ref buf, 4U) > 0)
-                        num20 = BitConverter.ToUInt32(buf, 0);
+                    num20 = (uint) this.watcher.GetInt32Data(this.watchAddr, 0);
                     if ((int)this.WatchInitVal != (int)num20)
                     {
                         bool isValidTrigger = false;
@@ -3983,7 +3694,7 @@ namespace SwissArmyKnifeForMugen
                     }
                 }
                 // load data + checks for whether Mugen is frozen, inactive, stuck, etc.
-                if (this.p != null && !this.p.HasExited)
+                if (this.watcher.CheckMugenProcessActive())
                 {
                     DateTime now;
                     // failsafe against unending RoundState=4, kills mugen if detected
@@ -3998,13 +3709,13 @@ namespace SwissArmyKnifeForMugen
                             if (maxRoundState4Time > 0L && num20 > num16 + maxRoundState4Time)
                             {
                                 num16 = 0L;
-                                if (this.p != null && !this.p.HasExited)
-                                    this.p.Kill();
+                                if (this.watcher.CheckMugenProcessActive())
+                                    this.watcher.GetMugenProcess().Kill();
                             }
                         }
                     }
                     // other checks
-                    if (this.p != null && !this.p.HasExited)
+                    if (this.watcher.CheckMugenProcessActive())
                     {
                         if (flag7 || !flag6 && this._isActivatedOnce)
                         {
@@ -4020,7 +3731,7 @@ namespace SwissArmyKnifeForMugen
                                         {
                                             case TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED:
                                             case TriggerCheckTarget.CheckMode.CHECKMODE_STARTED:
-                                                this.p.Kill();
+                                                this.watcher.GetMugenProcess().Kill();
                                                 break;
                                             case TriggerCheckTarget.CheckMode.CHECKMODE_SUSPENDED:
                                                 this._triggerCheckTarget.SetNextCommand(TriggerCheckTarget.CheckCommand.CHECKCMD_STOP);
@@ -4033,7 +3744,7 @@ namespace SwissArmyKnifeForMugen
                                                 }
                                                 this._stopDebugBreakFlag = false;
                                                 this.BeginInvoke((Action)(() => DebugForm.MainObj().EnableTriggerCheckStartButton()));
-                                                this.p.Kill();
+                                                this.watcher.GetMugenProcess().Kill();
                                                 this._isDebugBreakMode = false;
                                                 break;
                                         }
@@ -4045,8 +3756,8 @@ namespace SwissArmyKnifeForMugen
                         }
                         // data loading segment?
                         if (baseAddr == 0U)
-                            baseAddr = this.GetBaseAddr();
-                        if (baseAddr != 0U && !this.IsDemo(baseAddr))
+                            baseAddr = (uint) GameUtils.GetBaseAddress(this.watcher);
+                        if (baseAddr != 0U && !GameUtils.IsDemo(this.watcher))
                         {
                             if (baseAddr != 0U)
                             {
@@ -4059,7 +3770,7 @@ namespace SwissArmyKnifeForMugen
                                         flag6 = false;
                                         flag7 = false;
                                         MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                        if (!this.IsTurnsMode(baseAddr) && profile != null && !profile.IsQuickMode() || profile != null && profile.IsAutoMode())
+                                        if (!GameUtils.IsTurnsMode(this.watcher) && profile != null && !profile.IsQuickMode() || profile != null && profile.IsAutoMode())
                                         {
                                             this.UpdatePlayerDataEx(displayName2, palnoA1, displayName4, palnoB1, 0, 0, 0, 1, 0, trueTeam1WinCount, num3, trueTeam2WinCount, num4, drawRounds, 1, 0);
                                             this.UpdatePlayerDataEx(displayName3, palnoA2, displayName5, palnoB2, 0, 0, 0, 1, 0, trueTeam2WinCount, num4, trueTeam1WinCount, num3, drawRounds, 1, 0);
@@ -4067,17 +3778,17 @@ namespace SwissArmyKnifeForMugen
                                         }
                                     }
                                 }
-                                if (this.p != null && !this.p.HasExited && num19 > 0)
+                                if (this.watcher.CheckMugenProcessActive() && num19 > 0)
                                 {
                                     now = DateTime.Now;
                                     if (now.Ticks / 10000000L % 2L == 0L)
                                     {
-                                        this.SetForegroundWindowEx(this.p.MainWindowHandle);
-                                        if (this.IsMugenActive(baseAddr))
+                                        this.SetForegroundWindowEx(this.watcher.GetMugenWindowHandle());
+                                        if (GameUtils.IsMugenActive(this.watcher))
                                             --num19;
                                     }
                                 }
-                                playerAddr1 = this.GetP1Addr(baseAddr);
+                                playerAddr1 = GameUtils.GetP1Addr(this.watcher);
                                 if (playerAddr1 == 0U)
                                 {
                                     flag1 = false;
@@ -4085,13 +3796,13 @@ namespace SwissArmyKnifeForMugen
                                     {
                                         flag6 = false;
                                         flag7 = false;
-                                        int num20 = this.IsSpeedMode(baseAddr) ? 1 : 0;
-                                        bool flag9 = this.IsSkipMode(baseAddr);
+                                        int num20 = GameUtils.IsSpeedMode(this.watcher) ? 1 : 0;
+                                        bool flag9 = GameUtils.IsSkipMode(this.watcher);
                                         if (num20 != 0)
                                             this.SetSpeedMode(baseAddr, false);
                                         if (flag9)
                                             this.SetSkipMode(baseAddr, false);
-                                        if (!this.IsTurnsMode(baseAddr))
+                                        if (!GameUtils.IsTurnsMode(this.watcher))
                                         {
                                             this._isGameQuitted = true;
                                             if (logManager != null)
@@ -4128,7 +3839,7 @@ namespace SwissArmyKnifeForMugen
                                         }
                                     }
                                 }
-                                playerAddr2 = this.GetP2Addr(baseAddr);
+                                playerAddr2 = GameUtils.GetP2Addr(this.watcher);
                                 if (playerAddr2 == 0U || this.player2Id != this.GetPlayerId(playerAddr2))
                                 {
                                     flag3 = false;
@@ -4152,13 +3863,13 @@ namespace SwissArmyKnifeForMugen
                                         }
                                     }
                                 }
-                                playerAddr3 = this.GetP3Addr(baseAddr);
+                                playerAddr3 = GameUtils.GetP3Addr(this.watcher);
                                 if (playerAddr3 == 0U || this.player3Id != this.GetPlayerId(playerAddr3))
                                 {
                                     flag4 = false;
                                     this.player3AnimAddr = 0U;
                                 }
-                                playerAddr4 = this.GetP4Addr(baseAddr);
+                                playerAddr4 = GameUtils.GetP4Addr(this.watcher);
                                 if (playerAddr4 == 0U || this.player4Id != this.GetPlayerId(playerAddr4))
                                 {
                                     flag5 = false;
@@ -4169,12 +3880,12 @@ namespace SwissArmyKnifeForMugen
                             {
                                 flag1 = true;
                                 this._invokeWaitTime = 20;
-                                if (this.p != null)
+                                if (this.watcher.GetMugenProcess() != null)
                                 {
                                     this.BeginInvoke((Action)(() => DebugForm.MainObj().InitPlayers(60)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
                                     this.BeginInvoke((Action)(() => DebugForm.MainObj().InitExplods(50)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
                                     this.BeginInvoke((Action)(() => DebugForm.MainObj().InitProjs(50)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                                    this.BeginInvoke((Action)(() => DebugForm.MainObj().InitTriggerCheck(this._mugen_type)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                                    this.BeginInvoke((Action)(() => DebugForm.MainObj().InitTriggerCheck(this.watcher.MugenVersion)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
                                     if (this._triggerCheckTarget.GetCurrentMode() == TriggerCheckTarget.CheckMode.CHECKMODE_STARTED)
                                         this.BeginInvoke((Action)(() => this.StartTriggerCheckMode()))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
                                 }
@@ -4272,13 +3983,13 @@ namespace SwissArmyKnifeForMugen
                                 else
                                     displayName5 = (string)null;
                             }
-                            if (this._isMugenActive != this.IsMugenActive(baseAddr))
+                            if (this._isMugenActive != GameUtils.IsMugenActive(this.watcher))
                             {
-                                this._isMugenActive = this.IsMugenActive(baseAddr);
-                                if (this.p != null)
+                                this._isMugenActive = GameUtils.IsMugenActive(this.watcher);
+                                if (this.watcher.GetMugenProcess() != null)
                                     this.BeginInvoke((Action)(() => this.SetTitleActive(this._isMugenActive)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
                             }
-                            bool currentDebugMode = this.IsDebugMode(baseAddr);
+                            bool currentDebugMode = GameUtils.IsDebugMode(this.watcher);
                             if (this._isDebugModeChanged)
                             {
                                 this._isDebugModeChanged = false;
@@ -4288,7 +3999,7 @@ namespace SwissArmyKnifeForMugen
                             else if (currentDebugMode != this._isDebugMode)
                             {
                                 this._isDebugMode = currentDebugMode;
-                                if (this.p != null)
+                                if (this.watcher.GetMugenProcess() != null)
                                     this.BeginInvoke((Action)(() => debugForm.SetDebugModeCheckBox(currentDebugMode, false)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
                             }
                             if (this._isDebugMode)
@@ -4309,10 +4020,10 @@ namespace SwissArmyKnifeForMugen
                                     {
                                         this._debugTargetNo = playerNoFromId + 1;
                                         this._debugTargetPlayer = 0;
-                                        if (this._debugTargetNo != this.GetDebugTargetNo(baseAddr))
+                                        if (this._debugTargetNo != GameUtils.GetDebugTargetNo(this.watcher))
                                         {
                                             this.SetDebugTargetNo(baseAddr, this._debugTargetNo);
-                                            if (this.p != null)
+                                            if (this.watcher.GetMugenProcess() != null)
                                                 debugForm.SetDebugTargetNo(this._debugTargetNo);
                                         }
                                     }
@@ -4330,11 +4041,11 @@ namespace SwissArmyKnifeForMugen
                                 }
                                 else
                                 {
-                                    int debugNo = this.GetDebugTargetNo(baseAddr);
+                                    int debugNo = GameUtils.GetDebugTargetNo(this.watcher);
                                     if (this._debugTargetNo != debugNo)
                                     {
                                         this._debugTargetNo = debugNo;
-                                        if (this.p != null)
+                                        if (this.watcher.GetMugenProcess() != null)
                                             this.BeginInvoke((Action)(() => debugForm.SetDebugTargetNo(debugNo)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
                                     }
                                 }
@@ -4417,20 +4128,20 @@ namespace SwissArmyKnifeForMugen
                             if (flag1)
                             {
                                 // handling for long RoundState=0,4
-                                int roundState1 = this.GetRoundState(baseAddr);
+                                int roundState1 = GameUtils.GetRoundState(this.watcher);
                                 if (roundState1 == 0)
                                 {
                                     this._invokeWaitTime = 20;
-                                    num1 = this.GetTeam1WinCount(baseAddr);
-                                    num2 = this.GetTeam2WinCount(baseAddr);
-                                    drawRounds = this.GetDrawGameCount(baseAddr);
-                                    num7 = this.GetGametime(baseAddr);
-                                    int num20 = this.IsSpeedMode(baseAddr) ? 1 : 0;
-                                    bool flag9 = this.IsSkipMode(baseAddr);
-                                    int num21 = this._isSpeedMode ? 1 : 0;
-                                    if (num20 != num21)
+                                    team1Wins = GameUtils.GetTeam1WinCount(this.watcher);
+                                    team2Wins = GameUtils.GetTeam2WinCount(this.watcher);
+                                    drawRounds = GameUtils.GetDrawGameCount(this.watcher);
+                                    gameTime = (uint)GameUtils.GetGameTime(this.watcher);
+                                    int speedMode = GameUtils.IsSpeedMode(this.watcher) ? 1 : 0;
+                                    bool isSkipMode = GameUtils.IsSkipMode(this.watcher);
+                                    int prevSpeedMode = this._isSpeedMode ? 1 : 0;
+                                    if (speedMode != prevSpeedMode)
                                         this.SetSpeedMode(baseAddr, this._isSpeedMode);
-                                    if (flag9 != this._isSkipMode)
+                                    if (isSkipMode != this._isSkipMode)
                                         this.SetSkipMode(baseAddr, this._isSkipMode);
                                     if (num11 == 0L)
                                     {
@@ -4453,25 +4164,25 @@ namespace SwissArmyKnifeForMugen
                                 }
                                 else if (flag6 || roundState1 == 4)
                                 {
-                                    if (!this.IsPaused() && !this._isDebugBreakMode)
+                                    if (!GameUtils.IsPaused(this.watcher) && !this._isDebugBreakMode)
                                     {
                                         ++num6;
                                         if (num6 == num5)
                                         {
-                                            if ((int)this.GetGametime(baseAddr) - (int)num7 == 0)
+                                            if ((int)GameUtils.GetGameTime(this.watcher) - (int)gameTime == 0)
                                             {
                                                 this._isMugenFrozen = true;
                                                 this._invokeWaitTime = 10;
                                             }
                                             num6 = 0;
-                                            num7 = this.GetGametime(baseAddr);
+                                            gameTime = (uint)GameUtils.GetGameTime(this.watcher);
                                         }
                                     }
                                     else
                                         num6 = 0;
-                                    if (this.p != null)
-                                        this.BeginInvoke((Action)(() => debugForm.SetPauseCheckBox(this.IsPaused())))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                                    if (this.IsPaused() && this._isStepMode)
+                                    if (this.watcher.GetMugenProcess() != null)
+                                        this.BeginInvoke((Action)(() => debugForm.SetPauseCheckBox(GameUtils.IsPaused(this.watcher))))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                                    if (GameUtils.IsPaused(this.watcher) && this._isStepMode)
                                     {
                                         now = DateTime.Now;
                                         this._stepModeCounter = now.Ticks / 10000L;
@@ -4481,9 +4192,9 @@ namespace SwissArmyKnifeForMugen
                                             this.InjectStepCommand();
                                         }
                                     }
-                                    bool currentSpeedMode = this.IsSpeedMode(baseAddr);
-                                    bool flag9 = this.IsSkipMode(baseAddr);
-                                    int skipFrames = this.GetSkipFrames(baseAddr);
+                                    bool currentSpeedMode = GameUtils.IsSpeedMode(this.watcher);
+                                    bool flag9 = GameUtils.IsSkipMode(this.watcher);
+                                    int skipFrames = GameUtils.GetSkipFrames(this.watcher);
                                     if (roundState1 < 3)
                                     {
                                         if (this._isSpeedModeChanged)
@@ -4505,7 +4216,7 @@ namespace SwissArmyKnifeForMugen
                                             else
                                             {
                                                 this._isSpeedMode = currentSpeedMode;
-                                                if (this.p != null)
+                                                if (this.watcher.GetMugenProcess() != null)
                                                     this.BeginInvoke((Action)(() => debugForm.SetSpeedModeCheckBox(currentSpeedMode, false)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
                                             }
                                         }
@@ -4515,7 +4226,7 @@ namespace SwissArmyKnifeForMugen
                                 }
                                 // handler for checking if Mugen crashed or froze during RoundState=[1,3]
                                 // as well as data read/load/update
-                                int roundState2 = this.GetRoundState(baseAddr);
+                                int roundState2 = GameUtils.GetRoundState(this.watcher);
                                 if (roundState2 >= 1 && roundState2 <= 3 && (flag2 & flag3 && !this._isMugenCrashed))
                                 {
                                     if (!flag6)
@@ -4527,31 +4238,31 @@ namespace SwissArmyKnifeForMugen
                                         num14 = 0L;
                                         num15 = 0L;
                                         num16 = 0L;
-                                        num18 = this.GetRoundNoOfMatch(baseAddr);
-                                        num1 = this.GetTeam1WinCount(baseAddr);
-                                        num2 = this.GetTeam2WinCount(baseAddr);
-                                        drawRounds = this.GetDrawGameCount(baseAddr);
+                                        num18 = GameUtils.GetRoundNoOfMatch(this.watcher);
+                                        team1Wins = GameUtils.GetTeam1WinCount(this.watcher);
+                                        team2Wins = GameUtils.GetTeam2WinCount(this.watcher);
+                                        drawRounds = GameUtils.GetDrawGameCount(this.watcher);
                                         this._isGameQuitted = false;
                                         if (this._triggerCheckTarget != null)
                                             this._triggerCheckTarget.SetDirty();
                                         MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
                                         if (profile != null && profile.IsAutoMode())
                                         {
-                                            num18 = !profile.IsStrictRoundMode() ? this.GetRoundNoOfMatch(baseAddr) : this.GetRoundNoOfMatch(baseAddr) - 1;
-                                            if (!this.IsDebugMode(baseAddr))
+                                            num18 = !profile.IsStrictRoundMode() ? GameUtils.GetRoundNoOfMatch(this.watcher) : GameUtils.GetRoundNoOfMatch(this.watcher) - 1;
+                                            if (!GameUtils.IsDebugMode(this.watcher))
                                                 this.EnableDebugKey(baseAddr, true);
                                             this.BeginInvoke((Action)(() => DebugForm.MainObj().SetSpeedModeCheckBox(profile.IsSpeedMode(), true)));
                                             this.BeginInvoke((Action)(() => DebugForm.MainObj().SetSkipModeCheckBox(profile.IsSkipMode())));
                                             this.BeginInvoke((Action)(() => DebugForm.MainObj().SetDebugModeCheckBox(profile.IsDebugMode(), true)));
                                             if (profile.IsStrictRoundMode())
                                             {
-                                                int team1WinCount = this.GetTeam1WinCount(baseAddr);
-                                                int team2WinCount = this.GetTeam2WinCount(baseAddr);
+                                                int team1WinCount = GameUtils.GetTeam1WinCount(this.watcher);
+                                                int team2WinCount = GameUtils.GetTeam2WinCount(this.watcher);
                                                 int num20 = num18;
                                                 if (team1WinCount >= num20 || team2WinCount >= num18)
                                                 {
                                                     flag6 = false;
-                                                    if (this.p != null && !this.p.HasExited)
+                                                    if (this.watcher.CheckMugenProcessActive())
                                                     {
                                                         this.KillGracefully();
                                                         continue;
@@ -4563,12 +4274,12 @@ namespace SwissArmyKnifeForMugen
                                     else
                                     {
                                         MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                        if (profile != null && profile.IsAutoMode() && this.GetRoundNo(baseAddr) > trueTeam1WinCount + trueTeam2WinCount + drawRounds + 1)
+                                        if (profile != null && profile.IsAutoMode() && GameUtils.GetRoundNo(this.watcher) > trueTeam1WinCount + trueTeam2WinCount + drawRounds + 1)
                                         {
                                             flag7 = false;
                                             flag6 = false;
                                             flag8 = true;
-                                            int num20 = this.GetDrawGameCount(baseAddr) + 1;
+                                            int num20 = GameUtils.GetDrawGameCount(this.watcher) + 1;
                                             this.SetDrawGameCount(baseAddr, num20);
                                             if (logManager != null)
                                             {
@@ -4626,12 +4337,12 @@ namespace SwissArmyKnifeForMugen
                                         now = DateTime.Now;
                                         num13 = now.Ticks / 10000000L;
                                         if (logManager != null)
-                                            AsyncAppendLog("Round " + (object)this.GetRoundNo(baseAddr) + " start!");
+                                            AsyncAppendLog("Round " + (object)GameUtils.GetRoundNo(this.watcher) + " start!");
                                     }
                                     MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
                                     if (profile != null && profile.IsAutoMode())
                                     {
-                                        if (this.GetRoundTime(baseAddr) <= 30 && this.IsSpeedMode(baseAddr))
+                                        if (GameUtils.GetRoundTime(this.watcher) <= 30 && GameUtils.IsSpeedMode(this.watcher))
                                             this.SetSpeedMode(baseAddr, false);
                                         long maxRoundTime = (long)profile.GetMaxRoundTime();
                                         now = DateTime.Now;
@@ -4641,10 +4352,10 @@ namespace SwissArmyKnifeForMugen
                                             flag7 = false;
                                             flag6 = false;
                                             flag8 = true;
-                                            int num21 = this.GetDrawGameCount(baseAddr) + 1;
+                                            int num21 = GameUtils.GetDrawGameCount(this.watcher) + 1;
                                             this.SetDrawGameCount(baseAddr, num21);
-                                            this._SetInt32Data(baseAddr, this._addr_db.ROUND_STATE_BASE_OFFSET, 3);
-                                            int roundNo = this.GetRoundNo(baseAddr);
+                                            this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.ROUND_STATE_BASE_OFFSET, 3);
+                                            int roundNo = GameUtils.GetRoundNo(this.watcher);
                                             this.SetRoundNo(baseAddr, roundNo + 1);
                                             this.InjectF4();
                                             if (logManager != null)
@@ -4681,9 +4392,9 @@ namespace SwissArmyKnifeForMugen
                                             flag7 = false;
                                             flag6 = false;
                                             flag8 = true;
-                                            int num21 = this.GetDrawGameCount(baseAddr) + 1;
+                                            int num21 = GameUtils.GetDrawGameCount(this.watcher) + 1;
                                             this.SetDrawGameCount(baseAddr, num21);
-                                            int roundNo = this.GetRoundNo(baseAddr);
+                                            int roundNo = GameUtils.GetRoundNo(this.watcher);
                                             this.SetRoundNo(baseAddr, roundNo + 1);
                                             this.InjectF4();
                                             if (logManager != null)
@@ -4712,12 +4423,12 @@ namespace SwissArmyKnifeForMugen
                                         long num20 = now.Ticks / 10000000L;
                                         if (maxRoundState4Time > 0L && num20 > num15 + maxRoundState4Time)
                                         {
-                                            this.GetRoundTime(baseAddr);
+                                            GameUtils.GetRoundTime(this.watcher);
                                             if (logManager != null)
                                                 AsyncAppendLog("This round was suspended in order to begin the next one.");
                                             if (!flag6)
                                             {
-                                                int roundNo = this.GetRoundNo(baseAddr);
+                                                int roundNo = GameUtils.GetRoundNo(this.watcher);
                                                 this.SetRoundNo(baseAddr, roundNo + 1);
                                                 this.InjectF4();
                                             }
@@ -4726,9 +4437,9 @@ namespace SwissArmyKnifeForMugen
                                                 flag7 = false;
                                                 flag6 = false;
                                                 flag8 = true;
-                                                int num21 = this.GetDrawGameCount(baseAddr) + 1;
+                                                int num21 = GameUtils.GetDrawGameCount(this.watcher) + 1;
                                                 this.SetDrawGameCount(baseAddr, num21);
-                                                int roundNo = this.GetRoundNo(baseAddr);
+                                                int roundNo = GameUtils.GetRoundNo(this.watcher);
                                                 this.SetRoundNo(baseAddr, roundNo + 1);
                                                 this.InjectF4();
                                                 if (logManager != null)
@@ -4742,8 +4453,8 @@ namespace SwissArmyKnifeForMugen
                                 {
                                     if (roundState2 >= 3)
                                     {
-                                        int num20 = this.IsSpeedMode(baseAddr) ? 1 : 0;
-                                        bool flag9 = this.IsSkipMode(baseAddr);
+                                        int num20 = GameUtils.IsSpeedMode(this.watcher) ? 1 : 0;
+                                        bool flag9 = GameUtils.IsSkipMode(this.watcher);
                                         if (num20 != 0)
                                             this.SetSpeedMode(baseAddr, false);
                                         if (flag9)
@@ -4751,36 +4462,36 @@ namespace SwissArmyKnifeForMugen
                                     }
                                     num11 = 0L;
                                     num12 = 0L;
-                                    int team1WinCount = this.GetTeam1WinCount(baseAddr);
-                                    int team2WinCount = this.GetTeam2WinCount(baseAddr);
-                                    int newDrawGameCount = this.GetDrawGameCount(baseAddr);
+                                    int team1WinCount = GameUtils.GetTeam1WinCount(this.watcher);
+                                    int team2WinCount = GameUtils.GetTeam2WinCount(this.watcher);
+                                    int newDrawGameCount = GameUtils.GetDrawGameCount(this.watcher);
                                     if (!flag8)
                                     {
-                                        if (team1WinCount > num1 && team2WinCount == num2)
+                                        if (team1WinCount > team1Wins && team2WinCount == team2Wins)
                                         {
                                             flag7 = true;
                                             flag6 = false;
                                             ++trueTeam1WinCount;
-                                            if (this.IsTeam1WinKO(baseAddr))
+                                            if (GameUtils.IsTeam1WinKO(this.watcher))
                                                 ++num3;
                                             if (logManager != null)
                                             {
-                                                if (this.IsTeam1WinKO(baseAddr))
+                                                if (GameUtils.IsTeam1WinKO(this.watcher))
                                                     AsyncAppendLog("⇒ Player 1 side wins by K.O.");
                                                 else
                                                     AsyncAppendLog("⇒  Player 1 side wins by judgement.");
                                             }
                                         }
-                                        else if (team2WinCount > num2 && team1WinCount == num1)
+                                        else if (team2WinCount > team2Wins && team1WinCount == team1Wins)
                                         {
                                             flag7 = true;
                                             flag6 = false;
                                             ++trueTeam2WinCount;
-                                            if (this.IsTeam2WinKO(baseAddr))
+                                            if (GameUtils.IsTeam2WinKO(this.watcher))
                                                 ++num4;
                                             if (logManager != null)
                                             {
-                                                if (this.IsTeam2WinKO(baseAddr))
+                                                if (GameUtils.IsTeam2WinKO(this.watcher))
                                                     AsyncAppendLog("⇒ Player 2 side wins by K.O.");
                                                 else
                                                     AsyncAppendLog("⇒ Player 2 side wins by judgement.");
@@ -4790,7 +4501,7 @@ namespace SwissArmyKnifeForMugen
                                         {
                                             flag7 = true;
                                             flag6 = false;
-                                            if (logManager != null && this.p != null)
+                                            if (logManager != null && this.watcher.GetMugenProcess() != null)
                                                 AsyncAppendLog("⇒ Draw.");
                                         }
                                     }
@@ -4798,13 +4509,13 @@ namespace SwissArmyKnifeForMugen
                                     {
                                         flag8 = false;
                                         MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                        if (!this.IsTurnsMode(baseAddr) || profile != null && profile.IsAutoMode() && profile.IsStrictRoundMode())
+                                        if (!GameUtils.IsTurnsMode(this.watcher) || profile != null && profile.IsAutoMode() && profile.IsStrictRoundMode())
                                         {
                                             if (team1WinCount >= num18 && team2WinCount < num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && trueTeam1WinCount + newDrawGameCount >= num18) && trueTeam2WinCount + newDrawGameCount < num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && trueTeam1WinCount > trueTeam2WinCount) && trueTeam1WinCount + trueTeam2WinCount + newDrawGameCount >= num18)
                                             {
                                                 flag7 = false;
-                                                this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this._mugen_type)));
-                                                if (this.p != null)
+                                                this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
+                                                if (this.watcher.GetMugenProcess() != null)
                                                     AsyncAppendLog(">>> " + (object)trueTeam1WinCount + "Wins" + (object)trueTeam2WinCount + "Losses" + (object)newDrawGameCount + "Draws. Resulting in victory for the player 1 side.");
                                                 if (profile != null && !profile.IsQuickMode())
                                                 {
@@ -4821,15 +4532,15 @@ namespace SwissArmyKnifeForMugen
                                                     }
                                                     if (team1WinCount < num18)
                                                         this.SetTeam1WinCount(baseAddr, 100);
-                                                    if (this.p != null && !profile.WasLastFight())
+                                                    if (this.watcher.GetMugenProcess() != null && !profile.WasLastFight())
                                                         AsyncAppendLog("Starting next match");
                                                 }
                                             }
                                             else if (team1WinCount < num18 && team2WinCount >= num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && trueTeam1WinCount + newDrawGameCount < num18) && trueTeam2WinCount + newDrawGameCount >= num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && trueTeam1WinCount < trueTeam2WinCount) && trueTeam1WinCount + trueTeam2WinCount + newDrawGameCount >= num18)
                                             {
                                                 flag7 = false;
-                                                this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this._mugen_type)));
-                                                if (this.p != null && !profile.WasLastFight())
+                                                this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
+                                                if (this.watcher.GetMugenProcess() != null && !profile.WasLastFight())
                                                     AsyncAppendLog(">>> " + (object)trueTeam2WinCount + "Wins" + (object)trueTeam1WinCount + "Losses" + (object)newDrawGameCount + "Draws. Resulting in victory for the player 2 side.");
                                                 if (profile != null && !profile.IsQuickMode())
                                                 {
@@ -4846,15 +4557,15 @@ namespace SwissArmyKnifeForMugen
                                                     }
                                                     if (team2WinCount < num18)
                                                         this.SetTeam2WinCount(baseAddr, 100);
-                                                    if (this.p != null && !profile.WasLastFight())
+                                                    if (this.watcher.GetMugenProcess() != null && !profile.WasLastFight())
                                                         AsyncAppendLog("Starting next match");
                                                 }
                                             }
                                             else if (team1WinCount >= num18 && team2WinCount >= num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && trueTeam1WinCount + newDrawGameCount >= num18) && trueTeam2WinCount + newDrawGameCount >= num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && trueTeam1WinCount == trueTeam2WinCount) && trueTeam1WinCount + trueTeam2WinCount + newDrawGameCount >= num18)
                                             {
                                                 flag7 = false;
-                                                this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this._mugen_type)));
-                                                if (this.p != null)
+                                                this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
+                                                if (this.watcher.GetMugenProcess() != null)
                                                     AsyncAppendLog(">>> " + (object)trueTeam1WinCount + "Wins" + (object)trueTeam2WinCount + "Losses" + (object)newDrawGameCount + "Draws. Resulting in an overall draw.");
                                                 if (profile != null && !profile.IsQuickMode())
                                                 {
@@ -4874,7 +4585,7 @@ namespace SwissArmyKnifeForMugen
                                                         this.SetTeam1WinCount(baseAddr, 100);
                                                         this.SetTeam2WinCount(baseAddr, 100);
                                                     }
-                                                    if (this.p != null && !profile.WasLastFight())
+                                                    if (this.watcher.GetMugenProcess() != null && !profile.WasLastFight())
                                                         AsyncAppendLog("Starting next match");
                                                 }
                                             }
@@ -4890,10 +4601,10 @@ namespace SwissArmyKnifeForMugen
             }
             if (flag6 | flag7)
             {
-                this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this._mugen_type)));
+                this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
                 this._invokeWaitTime = 20;
                 MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                if (baseAddr != 0U && !this.IsTurnsMode(baseAddr) || profile != null && profile.IsAutoMode())
+                if (baseAddr != 0U && !GameUtils.IsTurnsMode(this.watcher) || profile != null && profile.IsAutoMode())
                 {
                     if (this._isMugenFrozen)
                     {
@@ -4917,8 +4628,8 @@ namespace SwissArmyKnifeForMugen
                             this.UpdatePlayerDataEx(displayName3, palnoA2, displayName5, palnoB2, 0, 0, 0, 0, 1, trueTeam2WinCount, num4, trueTeam1WinCount, num3, drawRounds, 0, 1);
                         }
                     }
-                    if (profile != null && profile.IsAutoMode() && (this.p != null && !this.p.HasExited))
-                        this.p.Kill();
+                    if (profile != null && profile.IsAutoMode() && this.watcher.CheckMugenProcessActive())
+                        this.watcher.GetMugenProcess().Kill();
                 }
             }
             while (this.debugP != null)
@@ -4954,7 +4665,7 @@ namespace SwissArmyKnifeForMugen
                     this.debugP = (NativeDbgProcess)null;
                 }
             }
-            this.BeginInvoke((Action)(() => DebugForm.MainObj().PostFinalizeTriggerCheck(this._mugen_type)));
+            this.BeginInvoke((Action)(() => DebugForm.MainObj().PostFinalizeTriggerCheck(this.watcher.MugenVersion)));
         }
 
         /// <summary>
@@ -5023,18 +4734,6 @@ namespace SwissArmyKnifeForMugen
             this.KeyPress += new KeyPressEventHandler(this.MugenWindow_KeyPress);
             ((ISupportInitialize)this.backgroundBox).EndInit();
             this.ResumeLayout(false);
-        }
-
-        /// <summary>
-        /// enum of supported mugen versions
-        /// </summary>
-        public enum MugenType_t
-        {
-            MUGEN_TYPE_NONE,
-            MUGEN_TYPE_WINMUGEN,
-            MUGEN_TYPE_MUGEN10,
-            MUGEN_TYPE_MUGEN11A4,
-            MUGEN_TYPE_MUGEN11B1,
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 4)]

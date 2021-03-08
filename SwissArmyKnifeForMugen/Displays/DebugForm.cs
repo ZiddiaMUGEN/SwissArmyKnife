@@ -4,6 +4,8 @@
 // MVID: 09478AD8-365C-4BF3-BEA1-B5785151259B
 // Assembly location: C:\Users\ziddi\Downloads\Swiss Army Knife 1.1 Conversion\Swiss Army Knife 1.1 Conversion\SAKnifeWM.exe
 
+using MugenWatcher.EnumTypes;
+using MugenWatcher.Utils;
 using SwissArmyKnifeForMugen.Configs;
 using SwissArmyKnifeForMugen.Triggers;
 using SwissArmyKnifeForMugen.Utils;
@@ -1201,11 +1203,11 @@ namespace SwissArmyKnifeForMugen.Displays
             this.p4RadioButton.Enabled = false;
         }
 
-        public void InitTriggerCheck(MugenWindow.MugenType_t mugen_type)
+        public void InitTriggerCheck(MugenType_t mugen_type)
         {
         }
 
-        public void PreInitTriggerCheck(MugenWindow.MugenType_t mugen_type)
+        public void PreInitTriggerCheck(MugenType_t mugen_type)
         {
             this.label1.Text = "Debug Text Color:";
             if (MugenWindow.MainObj().GetTriggerCheckMode() == TriggerCheckTarget.CheckMode.CHECKMODE_STARTED)
@@ -1228,13 +1230,13 @@ namespace SwissArmyKnifeForMugen.Displays
             }
         }
 
-        public void FinalizeTriggerCheck(MugenWindow.MugenType_t mugen_type)
+        public void FinalizeTriggerCheck(MugenType_t mugen_type)
         {
         }
 
-        public void PostFinalizeTriggerCheck(MugenWindow.MugenType_t mugen_type)
+        public void PostFinalizeTriggerCheck(MugenType_t mugen_type)
         {
-            if (MugenWindow.MainObj().GetTriggerCheckMode() != TriggerCheckTarget.CheckMode.CHECKMODE_STARTED || MugenWindow.MainObj().IsPaused())
+            if (MugenWindow.MainObj().GetTriggerCheckMode() != TriggerCheckTarget.CheckMode.CHECKMODE_STARTED || GameUtils.IsPaused(MugenWindow.MainObj().GetWatcher()))
                 return;
             this.checkModeStateText.BackColor = this._defaultBgColor;
             this.checkModeStateText.ForeColor = this._defaultFgColor;
@@ -1906,7 +1908,7 @@ namespace SwissArmyKnifeForMugen.Displays
             {
                 if (e.KeyChar != '\x001B')
                     return;
-                if (MugenWindow.MainObj().getMugenProcess() != null)
+                if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() != null)
                     MugenWindow.MainObj().InjectESC();
                 e.Handled = true;
             }

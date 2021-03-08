@@ -32,7 +32,6 @@ namespace SwissArmyKnifeForMugen.Displays
         private const int SWP_ASYNC = 16384;
         private int locX;
         private int locY;
-        private IContainer components;
         private string[] allCharDefs = new string[0];
         private Button cancelButton;
         private Button okButton;
@@ -1004,8 +1003,6 @@ namespace SwissArmyKnifeForMugen.Displays
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && components != null)
-                components.Dispose();
             base.Dispose(disposing);
         }
 

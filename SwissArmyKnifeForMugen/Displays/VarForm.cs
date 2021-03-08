@@ -985,7 +985,7 @@ namespace SwissArmyKnifeForMugen.Displays
             }
             else if (e.KeyChar == '\x0002')
             {
-                if (MugenWindow.MainObj().getMugenProcess() != null)
+                if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() != null)
                 {
                     _isDirty = true;
                     binaryToolStripMenuItem.Checked = !binaryToolStripMenuItem.Checked;
@@ -1011,7 +1011,7 @@ namespace SwissArmyKnifeForMugen.Displays
             {
                 if (e.KeyChar != '\x001B')
                     return;
-                if (MugenWindow.MainObj().getMugenProcess() != null)
+                if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() != null)
                     MugenWindow.MainObj().InjectESC();
                 e.Handled = true;
             }
@@ -1075,7 +1075,7 @@ namespace SwissArmyKnifeForMugen.Displays
             }
             else
             {
-                if (MugenWindow.MainObj().getMugenProcess() == null)
+                if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() == null)
                     return;
                 if (binaryToolStripMenuItem.Checked)
                 {

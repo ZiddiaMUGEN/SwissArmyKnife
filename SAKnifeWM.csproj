@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="Current" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <!--Project was exported from assembly: C:\Users\ziddi\Downloads\Swiss Army Knife 1.1 Conversion\Swiss Army Knife 1.1 Conversion\SAKnifeWM.exe-->
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -7,7 +7,7 @@
     <ProjectGuid>{5D34859C-7941-4C60-8032-0E17842C9DBC}</ProjectGuid>
     <OutputType>WinExe</OutputType>
     <AssemblyName>SAKnifeWM</AssemblyName>
-    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <ApplicationVersion>1.0.8.0</ApplicationVersion>
     <FileAlignment>512</FileAlignment>
     <FileUpgradeFlags>
@@ -15,6 +15,7 @@
     <UpgradeBackupLocation>
     </UpgradeBackupLocation>
     <OldToolsVersion>3.5</OldToolsVersion>
+    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -25,6 +26,7 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -34,6 +36,7 @@
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="DebuggingDLL">
@@ -57,12 +60,8 @@
     <Compile Include="SwissArmyKnifeForMugen\Displays\MainForm.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="SwissArmyKnifeForMugen\Databases\Mugen11B1DB.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\Databases\Mugen11A4DB.cs" />
     <Compile Include="SwissArmyKnifeForMugen\Triggers\TriggerCheckTarget.cs" />
     <Compile Include="SwissArmyKnifeForMugen\Triggers\TriggerDatabase.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\Databases\MugenAddrDatabase.cs" />
-    <Compile Include="SwissArmyKnifeForMugen\Databases\Mugen10DB.cs" />
     <Compile Include="SwissArmyKnifeForMugen\Displays\QuickVSModePanel.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -120,6 +119,9 @@
     <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\TimedMessageBox.resx" />
     <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\VarForm.resx" />
     <EmbeddedResource Include="SwissArmyKnifeForMugen\Displays\WelcomeForm.resx" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MugenWatcher\MugenWatcher.csproj">
