@@ -1509,7 +1509,7 @@ namespace SwissArmyKnifeForMugen.Displays
             }
             else
             {
-                MugenWindow.MainObj().SetPaused(this.pauseCheckBox.Checked);
+                GameUtils.SetPaused(MugenWindow.MainObj().GetWatcher(), this.pauseCheckBox.Checked);
                 this._SetStepInterval();
                 if (this.pauseCheckBox.Checked)
                     return;
@@ -3247,7 +3247,7 @@ namespace SwissArmyKnifeForMugen.Displays
                 this.triggerCheckResumeButton.Enabled = false;
                 if (MugenWindow.MainObj().GetIsExperimental())
                 {
-                    MugenWindow.MainObj().SetPaused(false);
+                    GameUtils.SetPaused(MugenWindow.MainObj().GetWatcher(), false);
                     MugenWindow.MainObj().WatchInitVal = 0U;
                 }
                 MugenWindow.MainObj().ResumeTriggerCheckMode();
