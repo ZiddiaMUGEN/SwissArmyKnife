@@ -30,10 +30,9 @@ namespace SwissArmyKnifeForMugen
     /// <summary>
     /// heart of the application. most of the monitoring/handling code is in here.
     /// </summary>
-    public class MugenWindow : Form
+    public class MugenWindow : Form, IDebugProcessRunner
     {
         private MugenProcessWatcher watcher;
-        private NativePipeline debugControl = new NativePipeline();
         // currently-running trigger target
         private TriggerCheckTarget _triggerCheckTarget = new TriggerCheckTarget();
         private int _invokeWaitTime = 10;
@@ -87,9 +86,6 @@ namespace SwissArmyKnifeForMugen
         public const int MAX_PLAYER_COUNT = 60;
         public const int MAX_EXPLOD_COUNT = 50;
         public const int MAX_PROJ_COUNT = 50;
-        // debugging Mugen process (used with trigger breakpoints)
-        private NativeDbgProcess debugP;
-        private int debugTargetThread;
         // freezes Mugen/holds hardware breakpoint
         private bool _isDebugBreakMode;
         private bool _stopDebugBreakFlag;
@@ -142,7 +138,6 @@ namespace SwissArmyKnifeForMugen
         private int player4Id;
         private IContainer components;
         private PictureBox backgroundBox;
-        private BackgroundWorker mugenWatcher;
         private ToolTip toolTip1;
         private System.Windows.Forms.Timer activateTimer;
         private uint watchAddr;
@@ -151,6 +146,7 @@ namespace SwissArmyKnifeForMugen
         private MugenWindow()
         {
             this.watcher = new MugenProcessWatcher();
+            this.watcher.SetDebugProcessRunner(this);
             this.InitializeComponent();
             this.ClientSize = new Size(640, 480);
             if (!File.Exists(MainForm.GetFullPath("background.jpg")))
@@ -262,7 +258,7 @@ namespace SwissArmyKnifeForMugen
         {
             if (this._isDebugBreakMode || this._isMugenCrashed || this._isMugenFrozen)
                 return false;
-            return this.debugP == null || this._triggerCheckTarget == null || this._triggerCheckTarget.GetCurrentMode() != TriggerCheckTarget.CheckMode.CHECKMODE_STARTED;
+            return this.watcher.GetDebugProcess() == null || this._triggerCheckTarget == null || this._triggerCheckTarget.GetCurrentMode() != TriggerCheckTarget.CheckMode.CHECKMODE_STARTED;
         }
 
         [DllImport("USER32.DLL", SetLastError = true)]
@@ -317,73 +313,6 @@ namespace SwissArmyKnifeForMugen
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
-        [DllImport("kernel32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool GetThreadContext(IntPtr hThread, ref MugenWindow.CONTEXT lpContext);
-
-        [DllImport("kernel32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool Wow64GetThreadContext(
-          IntPtr hThread,
-          ref MugenWindow.CONTEXT lpContext);
-
-        public static bool GetThreadContextEx(IntPtr hThread, ref MugenWindow.CONTEXT context) => IntPtr.Size == 4 ? MugenWindow.GetThreadContext(hThread, ref context) : MugenWindow.Wow64GetThreadContext(hThread, ref context);
-
-        [DllImport("kernel32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool SetThreadContext(IntPtr hThread, ref MugenWindow.CONTEXT lpContext);
-
-        [DllImport("kernel32.dll")]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool Wow64SetThreadContext(
-          IntPtr hThread,
-          ref MugenWindow.CONTEXT lpContext);
-
-        public static bool SetThreadContextEx(IntPtr hThread, ref MugenWindow.CONTEXT context) => IntPtr.Size == 4 ? MugenWindow.SetThreadContext(hThread, ref context) : MugenWindow.Wow64SetThreadContext(hThread, ref context);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool GetThreadSelectorEntry(
-          IntPtr hThread,
-          uint dwSelector,
-          ref MugenWindow.LDT_ENTRY lpSelectorEntry);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool Wow64GetThreadSelectorEntry(
-          IntPtr hThread,
-          uint dwSelector,
-          ref MugenWindow.LDT_ENTRY lpSelectorEntry);
-
-        private static bool GetThreadSelectorEntryEx(
-          IntPtr hThread,
-          uint dwSelector,
-          ref MugenWindow.LDT_ENTRY lpSelectorEntry)
-        {
-            return IntPtr.Size == 4 ? MugenWindow.GetThreadSelectorEntry(hThread, dwSelector, ref lpSelectorEntry) : MugenWindow.Wow64GetThreadSelectorEntry(hThread, dwSelector, ref lpSelectorEntry);
-        }
-
-        [DllImport("kernel32.dll")]
-        public static extern IntPtr OpenThread(
-          MugenWindow.ThreadAccessFlags dwDesiredAccess,
-          [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle,
-          uint dwThreadId);
-
-        [DllImport("kernel32.dll")]
-        public static extern int ResumeThread(IntPtr hThread);
-
-        public static int ResumeThreadEx(IntPtr hThread) => MugenWindow.ResumeThread(hThread);
-
-        [DllImport("kernel32.dll")]
-        public static extern int SuspendThread(IntPtr hThread);
-
-        [DllImport("kernel32.dll")]
-        public static extern int Wow64SuspendThread(IntPtr hThread);
-
-        public static int SuspendThreadEx(IntPtr hThread) => IntPtr.Size == 4 ? MugenWindow.SuspendThread(hThread) : MugenWindow.Wow64SuspendThread(hThread);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool CloseHandle(IntPtr handle);
-
         public static MugenWindow MainObj()
         {
             if (MugenWindow.selfObj == null)
@@ -408,7 +337,7 @@ namespace SwissArmyKnifeForMugen
 
         public new void Activate()
         {
-            if (this._isDebugBreakMode || this._isMugenCrashed || this._isMugenFrozen || this.debugP != null && this._triggerCheckTarget != null && this._triggerCheckTarget.GetCurrentMode() == TriggerCheckTarget.CheckMode.CHECKMODE_STARTED)
+            if (this._isDebugBreakMode || this._isMugenCrashed || this._isMugenFrozen || this.watcher.GetDebugProcess() != null && this._triggerCheckTarget != null && this._triggerCheckTarget.GetCurrentMode() == TriggerCheckTarget.CheckMode.CHECKMODE_STARTED)
                 return;
             base.Activate();
         }
@@ -443,9 +372,9 @@ namespace SwissArmyKnifeForMugen
             this.watchAddr = 0U;
             this.WatchInitVal = 0U;
             // loop to wait for the monitor to become available/to kill the old Mugen process
-            while (this.mugenWatcher.IsBusy)
+            while (this.watcher.GetProcessWatcher().IsBusy)
             {
-                this.mugenWatcher.CancelAsync();
+                this.watcher.GetProcessWatcher().CancelAsync();
                 this.watcher.KillAndAwaitMugenProcessEnd();
                 Application.DoEvents();
             }
@@ -478,7 +407,7 @@ namespace SwissArmyKnifeForMugen
                 }
                 // #3: disable fullscreen
                 // backup mugen config
-                if(File.Exists(profile.GetMugenPath() + "/data/mugen.cfg"))
+                if (File.Exists(profile.GetMugenPath() + "/data/mugen.cfg"))
                 {
                     // check
                     string text = File.ReadAllText(profile.GetMugenPath() + "/data/mugen.cfg");
@@ -584,8 +513,8 @@ namespace SwissArmyKnifeForMugen
                 this._isGameQuitted = false;
                 this._isMugenCrashed = false;
                 // launch monitor
-                if (!this.mugenWatcher.IsBusy)
-                    this.mugenWatcher.RunWorkerAsync();
+                if (!this.watcher.GetProcessWatcher().IsBusy)
+                    this.watcher.GetProcessWatcher().RunWorkerAsync();
                 return true;
             }
             // failure case
@@ -624,7 +553,7 @@ namespace SwissArmyKnifeForMugen
             }
         }
 
-        public bool IsBusyMugen() => this.mugenWatcher != null && this.mugenWatcher.IsBusy;
+        public bool IsBusyMugen() => this.watcher.GetProcessWatcher() != null && this.watcher.GetProcessWatcher().IsBusy;
 
         public void RestartMugen()
         {
@@ -642,9 +571,9 @@ namespace SwissArmyKnifeForMugen
             if (this.watcher.GetMugenProcess() != null)
             {
                 // kill the monitor process
-                while (this.mugenWatcher.IsBusy)
+                while (this.watcher.GetProcessWatcher().IsBusy)
                 {
-                    this.mugenWatcher.CancelAsync();
+                    this.watcher.GetProcessWatcher().CancelAsync();
                     Application.DoEvents();
                 }
                 if (this.watcher.GetMugenProcess() != null)
@@ -704,9 +633,9 @@ namespace SwissArmyKnifeForMugen
             }
             else
             {
-                while (this.mugenWatcher.IsBusy)
+                while (this.watcher.GetProcessWatcher().IsBusy)
                 {
-                    this.mugenWatcher.CancelAsync();
+                    this.watcher.GetProcessWatcher().CancelAsync();
                     Application.DoEvents();
                 }
             }
@@ -1081,7 +1010,7 @@ namespace SwissArmyKnifeForMugen
         {
             for (int index = 0; index < 60; ++index)
             {
-                uint playerAddr = (uint) GameUtils.GetPlayerAddress(this.watcher, baseAddr, index + 1);
+                uint playerAddr = (uint)GameUtils.GetPlayerAddress(this.watcher, baseAddr, index + 1);
                 if (playerAddr != 0U && PlayerUtils.DoesPlayerExist(this.watcher, playerAddr) && playerId == PlayerUtils.GetPlayerId(this.watcher, playerAddr))
                     return index;
             }
@@ -1530,7 +1459,7 @@ namespace SwissArmyKnifeForMugen
                 return;
             uint playerAddr = 0;
             if (this._varInspectTargetNo > 0)
-                playerAddr = (uint) GameUtils.GetPlayerAddress(this.watcher, baseAddr, this._varInspectTargetNo);
+                playerAddr = (uint)GameUtils.GetPlayerAddress(this.watcher, baseAddr, this._varInspectTargetNo);
             int playerId = 0;
             if (playerAddr != 0U)
                 playerId = PlayerUtils.GetPlayerId(this.watcher, playerAddr);
@@ -1872,7 +1801,7 @@ namespace SwissArmyKnifeForMugen
                 // otherwise pass the root addr.
                 if (targetTrigger.triggerType == TriggerId.TRIGGER_NUMEXPLOD_ID
                     || targetTrigger.triggerType == TriggerId.TRIGGER_NUMTARGET
-                    || targetTrigger.triggerType == TriggerId.TRIGGER_HASTARGET) 
+                    || targetTrigger.triggerType == TriggerId.TRIGGER_HASTARGET)
                     return GetTriggerValueEx(baseAddr, num);
                 return GetTriggerValueEx(baseAddr, rootAdder);
             }
@@ -2057,7 +1986,7 @@ namespace SwissArmyKnifeForMugen
             int num = 0;
             for (int index = 4; index < 60; ++index)
             {
-                uint playerAddr = (uint) GameUtils.GetPlayerAddress(this.watcher, baseAddr, index + 1);
+                uint playerAddr = (uint)GameUtils.GetPlayerAddress(this.watcher, baseAddr, index + 1);
                 if (playerAddr != 0U && PlayerUtils.DoesPlayerExist(this.watcher, playerAddr) && playerID == this.GetRootId(baseAddr, PlayerUtils.GetPlayerId(this.watcher, playerAddr)))
                     num++;
             }
@@ -2077,7 +2006,7 @@ namespace SwissArmyKnifeForMugen
             int num = 0;
             for (int index = 4; index < 60; ++index)
             {
-                uint playerAddr = (uint) GameUtils.GetPlayerAddress(this.watcher, baseAddr, index + 1);
+                uint playerAddr = (uint)GameUtils.GetPlayerAddress(this.watcher, baseAddr, index + 1);
                 if (playerAddr != 0U && PlayerUtils.DoesPlayerExist(this.watcher, playerAddr) && playerID == this.GetRootId(baseAddr, PlayerUtils.GetPlayerId(this.watcher, playerAddr)) && helperID == PlayerUtils.GetHelperId(this.watcher, playerAddr))
                     num++;
             }
@@ -2091,7 +2020,7 @@ namespace SwissArmyKnifeForMugen
         /// <returns></returns>
         private bool _SetBreakPoint(uint baseAddr)
         {
-            if (baseAddr == 0U || this.debugTargetThread == 0)
+            if (baseAddr == 0U)
                 return false;
             uint num = 0;
             TriggerCheckTarget.Player_t targetPlayer = this._triggerCheckTarget.GetTargetPlayer();
@@ -2159,7 +2088,7 @@ namespace SwissArmyKnifeForMugen
             if (ProfileManager.MainObj().GetProfile(this._workingProfileId).IsExperimentalBreakpoints())
                 this.__SetExperimentalBreakPoint(targetAdder);
             else
-                this.__SetBreakPoint(targetAdder, this.debugTargetThread);
+                return this.watcher.SetBreakpoint(targetAdder);
             return true;
         }
 
@@ -2174,1879 +2103,7 @@ namespace SwissArmyKnifeForMugen
                 return;
             byte[] buf = new byte[4];
             this.watchAddr = targetAdder;
-            this.WatchInitVal = (uint) this.watcher.GetInt32Data(this.watchAddr, 0);
-        }
-
-        /// <summary>
-        /// sets a hardware breakpoint at the given address
-        /// </summary>
-        /// <param name="targetAdder"></param>
-        /// <param name="threadId"></param>
-        private void __SetBreakPoint(uint targetAdder, int threadId)
-        {
-            if (this.debugP == null)
-                return;
-            MugenWindow.CONTEXT context = new MugenWindow.CONTEXT();
-            context.ContextFlags = 65552U;
-            IntPtr num = IntPtr.Zero;
-            try
-            {
-                num = MugenWindow.OpenThread(MugenWindow.ThreadAccessFlags.SUSPEND_RESUME | MugenWindow.ThreadAccessFlags.GET_CONTEXT | MugenWindow.ThreadAccessFlags.SET_CONTEXT | MugenWindow.ThreadAccessFlags.QUERY_INFORMATION, false, (uint)threadId);
-                if (!(num != IntPtr.Zero) || MugenWindow.SuspendThreadEx(num) == -1)
-                    return;
-                if (MugenWindow.GetThreadContextEx(num, ref context))
-                {
-                    context.Dr0 = targetAdder;
-                    context.Dr7 = 851969U;
-                    MugenWindow.SetThreadContextEx(num, ref context);
-                }
-                MugenWindow.ResumeThreadEx(num);
-            }
-            finally
-            {
-                if (num != IntPtr.Zero)
-                    MugenWindow.CloseHandle(num);
-            }
-        }
-
-        private void _ClearBreakPoint()
-        {
-            if (this.debugTargetThread == 0)
-                return;
-            this.__ClearBreakPoint(this.debugTargetThread);
-        }
-
-        /// <summary>
-        /// clears a set hardware breakpoint
-        /// </summary>
-        /// <param name="threadId"></param>
-        private void __ClearBreakPoint(int threadId)
-        {
-            if (this.debugP == null)
-                return;
-            MugenWindow.CONTEXT context = new MugenWindow.CONTEXT();
-            context.ContextFlags = 65552U;
-            IntPtr num = IntPtr.Zero;
-            try
-            {
-                num = MugenWindow.OpenThread(MugenWindow.ThreadAccessFlags.SUSPEND_RESUME | MugenWindow.ThreadAccessFlags.GET_CONTEXT | MugenWindow.ThreadAccessFlags.SET_CONTEXT | MugenWindow.ThreadAccessFlags.QUERY_INFORMATION, false, (uint)threadId);
-                if (!(num != IntPtr.Zero) || MugenWindow.SuspendThreadEx(num) == -1)
-                    return;
-                if (MugenWindow.GetThreadContextEx(num, ref context))
-                {
-                    context.Dr0 = 0U;
-                    context.Dr7 = 0U;
-                    MugenWindow.SetThreadContextEx(num, ref context);
-                }
-                MugenWindow.ResumeThreadEx(num);
-            }
-            finally
-            {
-                if (num != IntPtr.Zero)
-                    MugenWindow.CloseHandle(num);
-            }
-        }
-
-        private uint _GetStackPointer()
-        {
-            if (this.debugP == null || this.debugTargetThread == 0)
-                return 0;
-            MugenWindow.CONTEXT context = new MugenWindow.CONTEXT();
-            context.ContextFlags = 65541U;
-            IntPtr num1 = IntPtr.Zero;
-            uint num2 = 0;
-            try
-            {
-                num1 = MugenWindow.OpenThread(MugenWindow.ThreadAccessFlags.GET_CONTEXT | MugenWindow.ThreadAccessFlags.QUERY_INFORMATION, false, (uint)this.debugTargetThread);
-                if (num1 != IntPtr.Zero)
-                {
-                    if (MugenWindow.GetThreadContextEx(num1, ref context))
-                    {
-                        MugenWindow.LDT_ENTRY lpSelectorEntry = new MugenWindow.LDT_ENTRY();
-                        if (MugenWindow.GetThreadSelectorEntryEx(num1, context.SegFs, ref lpSelectorEntry))
-                            num2 = (uint)(this.watcher.GetInt32Data((uint)(lpSelectorEntry.HighWord.Bits.BaseHi << 24 | lpSelectorEntry.HighWord.Bits.BaseMid << 16) | (uint)lpSelectorEntry.BaseLow, 4U) - 8192);
-                    }
-                }
-            }
-            finally
-            {
-                if (num1 != IntPtr.Zero)
-                    MugenWindow.CloseHandle(num1);
-            }
-            return num2;
-        }
-
-        /// <summary>
-        /// main loop for the monitor function. this function is responsible for handling most data reads, updates, breakpoints, etc.
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void mugenWatcher_DoWork(object sender, DoWorkEventArgs e)
-        {
-            BackgroundWorker backgroundWorker = (BackgroundWorker)sender;
-            LogManager logManager = LogManager.MainObj();
-            DebugForm debugForm = DebugForm.MainObj();
-            uint baseAddr = 0;
-            uint playerAddr1 = 0;
-            uint playerAddr2 = 0;
-            uint playerAddr3 = 0;
-            uint playerAddr4 = 0;
-            bool flag1 = false;
-            bool flag2 = false;
-            bool flag3 = false;
-            bool flag4 = false;
-            bool flag5 = false;
-            bool flag6 = false;
-            bool flag7 = false;
-            bool flag8 = false;
-            int team1Wins = 0;
-            int team2Wins = 0;
-            int trueTeam1WinCount = 0;
-            int trueTeam2WinCount = 0;
-            int num3 = 0;
-            int num4 = 0;
-            int drawRounds = 0;
-            string displayName1 = "";
-            string displayName2 = (string)null;
-            string displayName3 = (string)null;
-            string displayName4 = (string)null;
-            string displayName5 = (string)null;
-            int palnoA1 = 0;
-            int palnoA2 = 0;
-            int palnoB1 = 0;
-            int palnoB2 = 0;
-            int num5 = 300;
-            int num6 = 0;
-            uint gameTime = 0;
-            int num8 = 0;
-            long num9 = 0;
-            long num10 = 0;
-            long num11 = 0;
-            long num12 = 0;
-            long num13 = 0;
-            long num14 = 0;
-            long num15 = 0;
-            long num16 = 0;
-            int num17 = 0;
-            int num18 = 0;
-            int num19 = 2;
-            NativeEvent nativeEvent1 = (NativeEvent)null;
-            // this is used in comparisons
-            TriggerDatabase.TriggerValue_t triggerValueT = new TriggerDatabase.TriggerValue_t();
-            // will represent the thread we check triggers against/set bps in
-            this.debugTargetThread = 0;
-            // this is false by default+we set to true if mugen is really active
-            this._isMugenActive = false;
-            while (!backgroundWorker.CancellationPending)
-            {
-                // attach the debug process to the Mugen process if triggers are set up and the next command is START
-                if (this.debugP == null && this._triggerCheckTarget != null && (this._triggerCheckTarget.IsDirty() && this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_START))
-                    this.debugP = this.debugControl.Attach(this.watcher.GetMugenProcess().Id);
-                // check trigger values and apply breaks here if needed
-                // there may already be a hw break in effect/coming in, so it's identified in this block
-                if (this.debugP != null && !this._isDebugBreakMode)
-                {
-                    NativeEvent nativeEvent2 = this.debugControl.WaitForDebugEvent(16);
-                    // handle bp event if it was found
-                    if (nativeEvent2 != null)
-                    {
-                        // safety check if it's our hw bp that activated
-                        nativeEvent2.Process.HandleIfLoaderBreakpoint(nativeEvent2);
-                        if (nativeEvent2 is ExceptionNativeEvent)
-                        {
-                            switch (nativeEvent2.m_union.Exception.ExceptionRecord.ExceptionCode)
-                            {
-                                // these cases correspond to hardware bp?
-                                case ExceptionCode.STATUS_WOW64_SINGLESTEP:
-                                case ExceptionCode.STATUS_SINGLESTEP:
-                                    // check if read value type matches expected type + is in range/matching
-                                    bool triggerValueValid = false;
-                                    // read current value
-                                    TriggerDatabase.TriggerValue_t triggerValue = this.GetTriggerValue(baseAddr);
-                                    // make sure not empty
-                                    if (triggerValue != null && !triggerValueT.isEqual(triggerValue))
-                                    {
-                                        triggerValueT = triggerValue;
-                                        // used for verification, switching first on value type and then on operator.
-                                        // complicated but its mostly the same for each.
-                                        switch (triggerValue.valueType)
-                                        {
-                                            case TriggerDatabase.ValueType.VALUE_BOOL:
-                                                TriggerDatabase.TriggerValue_t targetValueFrom1 = this._triggerCheckTarget.GetTargetValueFrom();
-                                                if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_BOOL)
-                                                {
-                                                    switch (this._triggerCheckTarget.GetTargetValueOpType())
-                                                    {
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
-                                                            if (triggerValue.GetBoolValue() == targetValueFrom1.GetBoolValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
-                                                            if (triggerValue.GetBoolValue() != targetValueFrom1.GetBoolValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                    }
-                                                    if (triggerValueValid)
-                                                    {
-                                                        this._isDebugBreakMode = true;
-                                                        nativeEvent1 = nativeEvent2;
-                                                        break;
-                                                    }
-                                                    break;
-                                                }
-                                                if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_ANY)
-                                                {
-                                                    triggerValueValid = true;
-                                                    this._isDebugBreakMode = true;
-                                                    nativeEvent1 = nativeEvent2;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerDatabase.ValueType.VALUE_INT:
-                                                targetValueFrom1 = this._triggerCheckTarget.GetTargetValueFrom();
-                                                TriggerDatabase.TriggerValue_t targetValueTo1 = this._triggerCheckTarget.GetTargetValueTo();
-                                                triggerValue.mask = targetValueFrom1.mask;
-                                                if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_INT)
-                                                {
-                                                    switch (this._triggerCheckTarget.GetTargetValueOpType())
-                                                    {
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
-                                                            if (triggerValue.GetMaskedInt32Value() == targetValueFrom1.GetInt32Value())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
-                                                            if (triggerValue.GetMaskedInt32Value() != targetValueFrom1.GetInt32Value())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LT:
-                                                            if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LE:
-                                                            if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_GT:
-                                                            if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_GE:
-                                                            if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_FROM_TO:
-                                                            if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() <= targetValueTo1.GetInt32Value())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_L_FROM_TO:
-                                                            if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() <= targetValueTo1.GetInt32Value())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_G_FROM_TO:
-                                                            if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() < targetValueTo1.GetInt32Value())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LG_FROM_TO:
-                                                            if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() < targetValueTo1.GetInt32Value())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_FROM_TO:
-                                                            if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() > targetValueTo1.GetInt32Value())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_L_FROM_TO:
-                                                            if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() > targetValueTo1.GetInt32Value())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_G_FROM_TO:
-                                                            if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() >= targetValueTo1.GetInt32Value())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_LG_FROM_TO:
-                                                            if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() >= targetValueTo1.GetInt32Value())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                    }
-                                                    if (triggerValueValid)
-                                                    {
-                                                        this._isDebugBreakMode = true;
-                                                        nativeEvent1 = nativeEvent2;
-                                                        break;
-                                                    }
-                                                    break;
-                                                }
-                                                if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_ANY)
-                                                {
-                                                    triggerValueValid = true;
-                                                    this._isDebugBreakMode = true;
-                                                    nativeEvent1 = nativeEvent2;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerDatabase.ValueType.VALUE_FLOAT:
-                                                TriggerDatabase.TriggerValue_t targetValueFrom2 = this._triggerCheckTarget.GetTargetValueFrom();
-                                                TriggerDatabase.TriggerValue_t targetValueTo2 = this._triggerCheckTarget.GetTargetValueTo();
-                                                if (targetValueFrom2.valueType == TriggerDatabase.ValueType.VALUE_FLOAT)
-                                                {
-                                                    switch (this._triggerCheckTarget.GetTargetValueOpType())
-                                                    {
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
-                                                            if ((double)triggerValue.GetSingleValue() == (double)targetValueFrom2.GetSingleValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
-                                                            if ((double)triggerValue.GetSingleValue() != (double)targetValueFrom2.GetSingleValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LT:
-                                                            if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LE:
-                                                            if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_GT:
-                                                            if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_GE:
-                                                            if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_FROM_TO:
-                                                            if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() <= (double)targetValueTo2.GetSingleValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_L_FROM_TO:
-                                                            if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() <= (double)targetValueTo2.GetSingleValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_G_FROM_TO:
-                                                            if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() < (double)targetValueTo2.GetSingleValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LG_FROM_TO:
-                                                            if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() < (double)targetValueTo2.GetSingleValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_FROM_TO:
-                                                            if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() > (double)targetValueTo2.GetSingleValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_L_FROM_TO:
-                                                            if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() > (double)targetValueTo2.GetSingleValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_G_FROM_TO:
-                                                            if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() >= (double)targetValueTo2.GetSingleValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_LG_FROM_TO:
-                                                            if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() >= (double)targetValueTo2.GetSingleValue())
-                                                            {
-                                                                triggerValueValid = true;
-                                                                break;
-                                                            }
-                                                            break;
-                                                    }
-                                                    if (triggerValueValid)
-                                                    {
-                                                        this._isDebugBreakMode = true;
-                                                        nativeEvent1 = nativeEvent2;
-                                                        break;
-                                                    }
-                                                    break;
-                                                }
-                                                if (targetValueFrom2.valueType == TriggerDatabase.ValueType.VALUE_ANY)
-                                                {
-                                                    triggerValueValid = true;
-                                                    this._isDebugBreakMode = true;
-                                                    nativeEvent1 = nativeEvent2;
-                                                    break;
-                                                }
-                                                break;
-                                        }
-                                    }
-                                    uint p1Addr = GameUtils.GetP1Addr(this.watcher);
-                                    // for un-stopping mugen from trigger breakpoints
-                                    if (!triggerValueValid || !flag6 || (p1Addr == 0U || this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_STOP))
-                                    {
-                                        this.debugControl.ContinueEvent(nativeEvent2, false);
-                                        this.BeginInvoke((Action)(() => DebugForm.MainObj().DisableTriggerCheckResumeButton()));
-                                        if (p1Addr == 0U)
-                                            this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
-                                        this._isDebugBreakMode = false;
-                                        break;
-                                    }
-                                    IAsyncResult asyncResult = this.BeginInvoke((Action)(() => DebugForm.MainObj().EnableTriggerCheckResumeButton()));
-                                    if (asyncResult != null)
-                                    {
-                                        asyncResult.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                                        break;
-                                    }
-                                    break;
-                                // skip over this? since we wait for step event
-                                case ExceptionCode.STATUS_WOW64_BREAKPOINT:
-                                case ExceptionCode.STATUS_BREAKPOINT:
-                                    this.debugControl.ContinueEvent(nativeEvent2, false);
-                                    break;
-                                default:
-                                    this.debugControl.ContinueEvent(nativeEvent2, false);
-                                    if (this.debugP != null)
-                                    {
-                                        try
-                                        {
-                                            this.debugControl.Detach(this.debugP);
-                                            this.debugP.Dispose();
-                                        }
-                                        catch
-                                        {
-                                        }
-                                        this.debugP = (NativeDbgProcess)null;
-                                    }
-                                    if (this.watcher.CheckMugenProcessActive())
-                                    {
-                                        this.watcher.GetMugenProcess().Kill();
-                                        break;
-                                    }
-                                    break;
-                            }
-                        }
-                        // boilerplate
-                        else if (nativeEvent2 is CreateProcessDebugEvent)
-                        {
-                            this.debugControl.ContinueEvent(nativeEvent2);
-                            this.debugTargetThread = nativeEvent2.ThreadId;
-                            this._debugSpPointer = this._GetStackPointer();
-                        }
-                        else if (nativeEvent2 is ExitProcessDebugEvent)
-                        {
-                            this.debugControl.ContinueEvent(nativeEvent2);
-                            try
-                            {
-                                this.debugControl.Detach(this.debugP);
-                                this.debugP.Dispose();
-                            }
-                            catch
-                            {
-                            }
-                            this.debugP = (NativeDbgProcess)null;
-                        }
-                        else
-                            this.debugControl.ContinueEvent(nativeEvent2);
-                    }
-                }
-                // check the status of the trigger check/apply next command
-                else if (this.watchAddr == 0U)
-                {
-                    Thread.Sleep(16);
-                    if (this.debugP != null)
-                    {
-                        if (this._stopDebugBreakFlag || this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_RESUME || this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_STOP)
-                        {
-                            if (this._triggerCheckTarget.GetNextCommand() != TriggerCheckTarget.CheckCommand.CHECKCMD_STOP && this._triggerCheckTarget.GetCurrentMode() != TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED)
-                            {
-                                this._triggerCheckTarget.SetNextCommand(TriggerCheckTarget.CheckCommand.CHECKCMD_NONE);
-                                this._triggerCheckTarget.SetCurrentMode(TriggerCheckTarget.CheckMode.CHECKMODE_STARTED);
-                                this._triggerCheckTarget.ResetDirty();
-                                if (nativeEvent1 != null)
-                                {
-                                    this.debugControl.ContinueEvent(nativeEvent1, false);
-                                    nativeEvent1 = (NativeEvent)null;
-                                }
-                            }
-                            else if (this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_STOP && this._triggerCheckTarget.GetCurrentMode() != TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED)
-                            {
-                                this._triggerCheckTarget.SetNextCommand(TriggerCheckTarget.CheckCommand.CHECKCMD_NONE);
-                                this._triggerCheckTarget.SetCurrentMode(TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED);
-                                this._triggerCheckTarget.ResetDirty();
-                                if (nativeEvent1 != null)
-                                {
-                                    this.debugControl.ContinueEvent(nativeEvent1, false);
-                                    nativeEvent1 = (NativeEvent)null;
-                                }
-                                this.BeginInvoke((Action)(() => DebugForm.MainObj().DisableTriggerCheckResumeButton()));
-                                this._ClearBreakPoint();
-                                this.BeginInvoke((Action)(() => DebugForm.MainObj().EnableTriggerCheckStartButton()))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                            }
-                            else if (nativeEvent1 != null)
-                            {
-                                this.debugControl.ContinueEvent(nativeEvent1, false);
-                                nativeEvent1 = (NativeEvent)null;
-                            }
-                            this._stopDebugBreakFlag = false;
-                            if (this._triggerCheckTarget.GetCurrentMode() != TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED)
-                                this.BeginInvoke((Action)(() => DebugForm.MainObj().EnableTriggerCheckStopButton()))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                            this.BeginInvoke((Action)(() => this.DelayedActivate()));
-                            this._isDebugBreakMode = false;
-                        }
-                        else if (this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_NONE && this._triggerCheckTarget.GetCurrentMode() == TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED && nativeEvent1 != null)
-                        {
-                            this.debugControl.ContinueEvent(nativeEvent1, false);
-                            nativeEvent1 = (NativeEvent)null;
-                            this._isDebugBreakMode = false;
-                            this.BeginInvoke((Action)(() => DebugForm.MainObj().DisableTriggerCheckResumeButton()));
-                        }
-                    }
-                }
-                // trigger checking for experimental/sw bps (compare value at watchAddr, no hardware bp involved)
-                if (this.watchAddr != 0U)
-                {
-                    uint num20 = 0;
-                    // read current value of watchAddr
-                    byte[] buf = new byte[4];
-                    num20 = (uint) this.watcher.GetInt32Data(this.watchAddr, 0);
-                    if ((int)this.WatchInitVal != (int)num20)
-                    {
-                        bool isValidTrigger = false;
-                        TriggerDatabase.TriggerValue_t triggerValue = this.GetTriggerValue(baseAddr);
-                        // everything below here is very similar to hw bp above
-                        if (triggerValue != null && !triggerValueT.isEqual(triggerValue))
-                        {
-                            triggerValueT = triggerValue;
-                            switch (triggerValue.valueType)
-                            {
-                                case TriggerDatabase.ValueType.VALUE_BOOL:
-                                    TriggerDatabase.TriggerValue_t targetValueFrom1 = this._triggerCheckTarget.GetTargetValueFrom();
-                                    if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_BOOL)
-                                    {
-                                        switch (this._triggerCheckTarget.GetTargetValueOpType())
-                                        {
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
-                                                if (triggerValue.GetBoolValue() == targetValueFrom1.GetBoolValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
-                                                if (triggerValue.GetBoolValue() != targetValueFrom1.GetBoolValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                        }
-                                        if (isValidTrigger)
-                                        {
-                                            GameUtils.SetPaused(this.watcher, true);
-                                            break;
-                                        }
-                                        break;
-                                    }
-                                    if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_ANY)
-                                    {
-                                        GameUtils.SetPaused(this.watcher, true);
-                                        break;
-                                    }
-                                    break;
-                                case TriggerDatabase.ValueType.VALUE_INT:
-                                    targetValueFrom1 = this._triggerCheckTarget.GetTargetValueFrom();
-                                    TriggerDatabase.TriggerValue_t targetValueTo1 = this._triggerCheckTarget.GetTargetValueTo();
-                                    triggerValue.mask = targetValueFrom1.mask;
-                                    if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_INT)
-                                    {
-                                        switch (this._triggerCheckTarget.GetTargetValueOpType())
-                                        {
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
-                                                if (triggerValue.GetMaskedInt32Value() == targetValueFrom1.GetInt32Value())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
-                                                if (triggerValue.GetMaskedInt32Value() != targetValueFrom1.GetInt32Value())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_LT:
-                                                if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_LE:
-                                                if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_GT:
-                                                if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_GE:
-                                                if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_FROM_TO:
-                                                if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() <= targetValueTo1.GetInt32Value())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_L_FROM_TO:
-                                                if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() <= targetValueTo1.GetInt32Value())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_G_FROM_TO:
-                                                if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() < targetValueTo1.GetInt32Value())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_LG_FROM_TO:
-                                                if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() < targetValueTo1.GetInt32Value())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_FROM_TO:
-                                                if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() > targetValueTo1.GetInt32Value())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_L_FROM_TO:
-                                                if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() > targetValueTo1.GetInt32Value())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_G_FROM_TO:
-                                                if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() >= targetValueTo1.GetInt32Value())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_LG_FROM_TO:
-                                                if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() >= targetValueTo1.GetInt32Value())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                        }
-                                        if (isValidTrigger)
-                                        {
-                                            GameUtils.SetPaused(this.watcher, true);
-                                            break;
-                                        }
-                                        break;
-                                    }
-                                    if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_ANY)
-                                    {
-                                        GameUtils.SetPaused(this.watcher, true);
-                                        break;
-                                    }
-                                    break;
-                                case TriggerDatabase.ValueType.VALUE_FLOAT:
-                                    TriggerDatabase.TriggerValue_t targetValueFrom2 = this._triggerCheckTarget.GetTargetValueFrom();
-                                    TriggerDatabase.TriggerValue_t targetValueTo2 = this._triggerCheckTarget.GetTargetValueTo();
-                                    if (targetValueFrom2.valueType == TriggerDatabase.ValueType.VALUE_FLOAT)
-                                    {
-                                        switch (this._triggerCheckTarget.GetTargetValueOpType())
-                                        {
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
-                                                if ((double)triggerValue.GetSingleValue() == (double)targetValueFrom2.GetSingleValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
-                                                if ((double)triggerValue.GetSingleValue() != (double)targetValueFrom2.GetSingleValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_LT:
-                                                if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_LE:
-                                                if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_GT:
-                                                if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_GE:
-                                                if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_FROM_TO:
-                                                if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() <= (double)targetValueTo2.GetSingleValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_L_FROM_TO:
-                                                if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() <= (double)targetValueTo2.GetSingleValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_G_FROM_TO:
-                                                if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() < (double)targetValueTo2.GetSingleValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_LG_FROM_TO:
-                                                if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() < (double)targetValueTo2.GetSingleValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_FROM_TO:
-                                                if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() > (double)targetValueTo2.GetSingleValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_L_FROM_TO:
-                                                if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() > (double)targetValueTo2.GetSingleValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_G_FROM_TO:
-                                                if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() >= (double)targetValueTo2.GetSingleValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                            case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_LG_FROM_TO:
-                                                if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() >= (double)targetValueTo2.GetSingleValue())
-                                                {
-                                                    isValidTrigger = true;
-                                                    break;
-                                                }
-                                                break;
-                                        }
-                                        if (isValidTrigger)
-                                        {
-                                            GameUtils.SetPaused(this.watcher, true);
-                                            break;
-                                        }
-                                        break;
-                                    }
-                                    if (targetValueFrom2.valueType == TriggerDatabase.ValueType.VALUE_ANY)
-                                    {
-                                        GameUtils.SetPaused(this.watcher, true);
-                                        break;
-                                    }
-                                    break;
-                            }
-                        }
-                        // fire the experimental bp
-                        if (isValidTrigger)
-                            this.BeginInvoke((Action)(() => DebugForm.MainObj().SetExpBPFired()))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                    }
-                }
-                // load data + checks for whether Mugen is frozen, inactive, stuck, etc.
-                if (this.watcher.CheckMugenProcessActive())
-                {
-                    DateTime now;
-                    // failsafe against unending RoundState=4, kills mugen if detected
-                    if (num16 != 0L)
-                    {
-                        MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                        if (profile != null && profile.IsAutoMode())
-                        {
-                            long maxRoundState4Time = (long)profile.GetMaxRoundState4Time();
-                            now = DateTime.Now;
-                            long num20 = now.Ticks / 10000000L;
-                            if (maxRoundState4Time > 0L && num20 > num16 + maxRoundState4Time)
-                            {
-                                num16 = 0L;
-                                if (this.watcher.CheckMugenProcessActive())
-                                    this.watcher.GetMugenProcess().Kill();
-                            }
-                        }
-                    }
-                    // other checks
-                    if (this.watcher.CheckMugenProcessActive())
-                    {
-                        if (flag7 || !flag6 && this._isActivatedOnce)
-                        {
-                            IAsyncResult asyncResult = this.BeginInvoke((Action)(() => LogManager.MainObj().IsAvailable()));
-                            if (asyncResult != null && this.watchAddr == 0U)
-                            {
-                                if (!asyncResult.AsyncWaitHandle.WaitOne(5000))
-                                {
-                                    ++num17;
-                                    if (num17 > 1)
-                                    {
-                                        switch (this._triggerCheckTarget.GetCurrentMode())
-                                        {
-                                            case TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED:
-                                            case TriggerCheckTarget.CheckMode.CHECKMODE_STARTED:
-                                                this.watcher.GetMugenProcess().Kill();
-                                                break;
-                                            case TriggerCheckTarget.CheckMode.CHECKMODE_SUSPENDED:
-                                                this._triggerCheckTarget.SetNextCommand(TriggerCheckTarget.CheckCommand.CHECKCMD_STOP);
-                                                this._triggerCheckTarget.SetCurrentMode(TriggerCheckTarget.CheckMode.CHECKMODE_STARTED);
-                                                this._triggerCheckTarget.ResetDirty();
-                                                if (nativeEvent1 != null)
-                                                {
-                                                    this.debugControl.ContinueEvent(nativeEvent1, false);
-                                                    nativeEvent1 = (NativeEvent)null;
-                                                }
-                                                this._stopDebugBreakFlag = false;
-                                                this.BeginInvoke((Action)(() => DebugForm.MainObj().EnableTriggerCheckStartButton()));
-                                                this.watcher.GetMugenProcess().Kill();
-                                                this._isDebugBreakMode = false;
-                                                break;
-                                        }
-                                    }
-                                }
-                                else
-                                    num17 = 0;
-                            }
-                        }
-                        // data loading segment?
-                        if (baseAddr == 0U)
-                            baseAddr = (uint) GameUtils.GetBaseAddress(this.watcher);
-                        if (baseAddr != 0U && !GameUtils.IsDemo(this.watcher))
-                        {
-                            if (baseAddr != 0U)
-                            {
-                                if (this._flagDumpPlayers)
-                                {
-                                    this._flagDumpPlayers = false;
-                                    this._DumpPlayers(baseAddr);
-                                    if (flag6 | flag7)
-                                    {
-                                        flag6 = false;
-                                        flag7 = false;
-                                        MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                        if (!GameUtils.IsTurnsMode(this.watcher) && profile != null && !profile.IsQuickMode() || profile != null && profile.IsAutoMode())
-                                        {
-                                            this.UpdatePlayerDataEx(displayName2, palnoA1, displayName4, palnoB1, 0, 0, 0, 1, 0, trueTeam1WinCount, num3, trueTeam2WinCount, num4, drawRounds, 1, 0);
-                                            this.UpdatePlayerDataEx(displayName3, palnoA2, displayName5, palnoB2, 0, 0, 0, 1, 0, trueTeam2WinCount, num4, trueTeam1WinCount, num3, drawRounds, 1, 0);
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (this.watcher.CheckMugenProcessActive() && num19 > 0)
-                                {
-                                    now = DateTime.Now;
-                                    if (now.Ticks / 10000000L % 2L == 0L)
-                                    {
-                                        this.SetForegroundWindowEx(this.watcher.GetMugenWindowHandle());
-                                        if (GameUtils.IsMugenActive(this.watcher))
-                                            --num19;
-                                    }
-                                }
-                                playerAddr1 = GameUtils.GetP1Addr(this.watcher);
-                                if (playerAddr1 == 0U)
-                                {
-                                    flag1 = false;
-                                    if (flag6 | flag7)
-                                    {
-                                        flag6 = false;
-                                        flag7 = false;
-                                        int num20 = GameUtils.IsSpeedMode(this.watcher) ? 1 : 0;
-                                        bool flag9 = GameUtils.IsSkipMode(this.watcher);
-                                        if (num20 != 0)
-                                            GameUtils.SetSpeedMode(this.watcher, baseAddr, false);
-                                        if (flag9)
-                                            GameUtils.SetSkipMode(this.watcher, baseAddr, false, this._skipModeFrames);
-                                        if (!GameUtils.IsTurnsMode(this.watcher))
-                                        {
-                                            this._isGameQuitted = true;
-                                            if (logManager != null)
-                                                AsyncAppendLog("The match has been cancelled.");
-                                            MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                            if (profile != null && !profile.IsQuickMode())
-                                            {
-                                                this.UpdatePlayerDataEx(displayName2, palnoA1, displayName4, palnoB1, 0, 0, 0, 0, 1, trueTeam1WinCount, num3, trueTeam2WinCount, num4, drawRounds, 0, 1);
-                                                this.UpdatePlayerDataEx(displayName3, palnoA2, displayName5, palnoB2, 0, 0, 0, 0, 1, trueTeam2WinCount, num4, trueTeam1WinCount, num3, drawRounds, 0, 1);
-                                            }
-                                        }
-                                    }
-                                }
-                                if (playerAddr1 == 0U || this.player1Id != PlayerUtils.GetPlayerId(this.watcher, playerAddr1))
-                                {
-                                    flag2 = false;
-                                    this.player1AnimAddr = 0U;
-                                    if (num9 == 0L)
-                                    {
-                                        now = DateTime.Now;
-                                        num9 = now.Ticks / 10000000L;
-                                    }
-                                    MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                    if (profile != null && profile.IsAutoMode())
-                                    {
-                                        long num20 = (long)(profile.GetMaxRoundState1Time() * 2);
-                                        now = DateTime.Now;
-                                        long num21 = now.Ticks / 10000000L;
-                                        if (num20 > 0L && num21 > num9 + num20 && !this._isMugenFrozen)
-                                        {
-                                            this._isMugenFrozen = true;
-                                            if (logManager != null)
-                                                AsyncAppendLog("Loading the characters is taking too long.");
-                                        }
-                                    }
-                                }
-                                playerAddr2 = GameUtils.GetP2Addr(this.watcher);
-                                if (playerAddr2 == 0U || this.player2Id != PlayerUtils.GetPlayerId(this.watcher, playerAddr2))
-                                {
-                                    flag3 = false;
-                                    this.player2AnimAddr = 0U;
-                                    if (num10 == 0L)
-                                    {
-                                        now = DateTime.Now;
-                                        num10 = now.Ticks / 10000000L;
-                                    }
-                                    MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                    if (profile != null && profile.IsAutoMode())
-                                    {
-                                        long num20 = (long)(profile.GetMaxRoundState1Time() * 2);
-                                        now = DateTime.Now;
-                                        long num21 = now.Ticks / 10000000L;
-                                        if (num20 > 0L && num21 > num10 + num20 && !this._isMugenFrozen)
-                                        {
-                                            this._isMugenFrozen = true;
-                                            if (logManager != null)
-                                                AsyncAppendLog("Loading the characters is taking too long.");
-                                        }
-                                    }
-                                }
-                                playerAddr3 = GameUtils.GetP3Addr(this.watcher);
-                                if (playerAddr3 == 0U || this.player3Id != PlayerUtils.GetPlayerId(this.watcher, playerAddr3))
-                                {
-                                    flag4 = false;
-                                    this.player3AnimAddr = 0U;
-                                }
-                                playerAddr4 = GameUtils.GetP4Addr(this.watcher);
-                                if (playerAddr4 == 0U || this.player4Id != PlayerUtils.GetPlayerId(this.watcher, playerAddr4))
-                                {
-                                    flag5 = false;
-                                    this.player4AnimAddr = 0U;
-                                }
-                            }
-                            if (playerAddr1 != 0U && !flag1 && this.GetDisplayName(playerAddr1, ref displayName1) > 0)
-                            {
-                                flag1 = true;
-                                this._invokeWaitTime = 20;
-                                if (this.watcher.GetMugenProcess() != null)
-                                {
-                                    this.BeginInvoke((Action)(() => DebugForm.MainObj().InitPlayers(60)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                                    this.BeginInvoke((Action)(() => DebugForm.MainObj().InitExplods(50)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                                    this.BeginInvoke((Action)(() => DebugForm.MainObj().InitProjs(50)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                                    this.BeginInvoke((Action)(() => DebugForm.MainObj().InitTriggerCheck(this.watcher.MugenVersion)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                                    if (this._triggerCheckTarget.GetCurrentMode() == TriggerCheckTarget.CheckMode.CHECKMODE_STARTED)
-                                        this.BeginInvoke((Action)(() => this.StartTriggerCheckMode()))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                                }
-                                trueTeam1WinCount = 0;
-                                trueTeam2WinCount = 0;
-                                num3 = 0;
-                                num4 = 0;
-                                this._timeOverCount1 = 0;
-                                this._timeOverCount2 = 0;
-                                MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                if (profile == null || !profile.IsAutoMode() || this.numOfGames == 0)
-                                    ++this.numOfGames;
-                                if (logManager != null)
-                                {
-                                    AsyncAppendLog(" ");
-                                    if (profile == null || !profile.IsAutoMode() || !this._isRetryGame)
-                                    {
-                                        AsyncAppendLog("//////Match " + (object)this.numOfGames + " //////");
-                                        if (profile != null && profile.IsAutoMode())
-                                            logManager.append(" - (" + (object)profile.GetCharacterCount() + " total)");
-                                    }
-                                    else
-                                        AsyncAppendLog("//////Match " + (object)this.numOfGames + " (retry)//////");
-                                    if (profile != null && profile.IsQuickMode())
-                                        AsyncAppendLog("(No overall results are calculated in Quick Vs. mode)");
-                                }
-                            }
-                            if (playerAddr1 != 0U && !flag2)
-                            {
-                                num9 = 0L;
-                                if (this.GetDisplayName(playerAddr1, ref displayName2) > 0)
-                                {
-                                    flag2 = true;
-                                    this.player1Id = PlayerUtils.GetPlayerId(this.watcher, playerAddr1);
-                                    this.player1AnimAddr = PlayerUtils.GetAnimListAddr(this.watcher, baseAddr, playerAddr1);
-                                    palnoA1 = PlayerUtils.GetPalno(this.watcher, playerAddr1);
-                                    string msg = "P1 side: " + displayName2;
-                                    msg = msg + " (" + palnoA1.ToString() + "p)";
-                                    this.BeginInvoke((Action)(() => DebugForm.MainObj().EnablePlayer(1)));
-                                    if (logManager != null)
-                                        AsyncAppendLog(msg);
-                                }
-                                else
-                                    displayName2 = (string)null;
-                            }
-                            if (playerAddr3 != 0U && !flag4)
-                            {
-                                if (this.GetDisplayName(playerAddr3, ref displayName4) > 0)
-                                {
-                                    flag4 = true;
-                                    this.player3Id = PlayerUtils.GetPlayerId(this.watcher, playerAddr3);
-                                    this.player3AnimAddr = PlayerUtils.GetAnimListAddr(this.watcher, baseAddr, playerAddr3);
-                                    palnoB1 = PlayerUtils.GetPalno(this.watcher, playerAddr3);
-                                    string msg = "P1 side: " + displayName4;
-                                    msg = msg + " (" + palnoB1.ToString() + "p)";
-                                    this.BeginInvoke((Action)(() => DebugForm.MainObj().EnablePlayer(3)));
-                                    if (logManager != null)
-                                        AsyncAppendLog(msg);
-                                }
-                                else
-                                    displayName4 = (string)null;
-                            }
-                            if (playerAddr2 != 0U && !flag3)
-                            {
-                                num10 = 0L;
-                                if (this.GetDisplayName(playerAddr2, ref displayName3) > 0)
-                                {
-                                    flag3 = true;
-                                    this.player2Id = PlayerUtils.GetPlayerId(this.watcher, playerAddr2);
-                                    this.player2AnimAddr = PlayerUtils.GetAnimListAddr(this.watcher, baseAddr, playerAddr2);
-                                    palnoA2 = PlayerUtils.GetPalno(this.watcher, playerAddr2);
-                                    string msg = "P2 side: " + displayName3;
-                                    msg = msg + " (" + palnoA2.ToString() + "p)";
-                                    this.BeginInvoke((Action)(() => DebugForm.MainObj().EnablePlayer(2)));
-                                    if (logManager != null)
-                                        AsyncAppendLog(msg);
-                                }
-                                else
-                                    displayName3 = (string)null;
-                            }
-                            if (playerAddr4 != 0U && !flag5)
-                            {
-                                if (this.GetDisplayName(playerAddr4, ref displayName5) > 0)
-                                {
-                                    flag5 = true;
-                                    this.player4Id = PlayerUtils.GetPlayerId(this.watcher, playerAddr4);
-                                    this.player4AnimAddr = PlayerUtils.GetAnimListAddr(this.watcher, baseAddr, playerAddr4);
-                                    palnoB2 = PlayerUtils.GetPalno(this.watcher, playerAddr4);
-                                    string msg = "P2 side: " + displayName5;
-                                    msg = msg + " (" + palnoB2.ToString() + "p)";
-                                    this.BeginInvoke((Action)(() => DebugForm.MainObj().EnablePlayer(4)));
-                                    if (logManager != null)
-                                        AsyncAppendLog(msg);
-                                }
-                                else
-                                    displayName5 = (string)null;
-                            }
-                            if (this._isMugenActive != GameUtils.IsMugenActive(this.watcher))
-                            {
-                                this._isMugenActive = GameUtils.IsMugenActive(this.watcher);
-                                if (this.watcher.GetMugenProcess() != null)
-                                    this.BeginInvoke((Action)(() => this.SetTitleActive(this._isMugenActive)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                            }
-                            bool currentDebugMode = GameUtils.IsDebugMode(this.watcher);
-                            if (this._isDebugModeChanged)
-                            {
-                                this._isDebugModeChanged = false;
-                                if (currentDebugMode != this._isDebugMode)
-                                    GameUtils.SetDebugMode(this.watcher, baseAddr, this._isDebugMode);
-                            }
-                            else if (currentDebugMode != this._isDebugMode)
-                            {
-                                this._isDebugMode = currentDebugMode;
-                                if (this.watcher.GetMugenProcess() != null)
-                                    this.BeginInvoke((Action)(() => debugForm.SetDebugModeCheckBox(currentDebugMode, false)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                            }
-                            if (this._isDebugMode)
-                            {
-                                if (this._varInspectTargetPlayer > 0)
-                                {
-                                    int playerNoFromId = this.GetPlayerNoFromId(baseAddr, this._varInspectTargetPlayer);
-                                    if (playerNoFromId >= 0)
-                                    {
-                                        this._varInspectTargetNo = playerNoFromId + 1;
-                                        this._varInspectTargetPlayer = 0;
-                                    }
-                                }
-                                if (this._debugTargetPlayer > 0)
-                                {
-                                    int playerNoFromId = this.GetPlayerNoFromId(baseAddr, this._debugTargetPlayer);
-                                    if (playerNoFromId >= 0)
-                                    {
-                                        this._debugTargetNo = playerNoFromId + 1;
-                                        this._debugTargetPlayer = 0;
-                                        if (this._debugTargetNo != GameUtils.GetDebugTargetNo(this.watcher))
-                                        {
-                                            GameUtils.SetDebugTargetNo(this.watcher, baseAddr, this._debugTargetNo);
-                                            if (this.watcher.GetMugenProcess() != null)
-                                                debugForm.SetDebugTargetNo(this._debugTargetNo);
-                                        }
-                                    }
-                                }
-                                if (this._isDebugTargetNoChanged)
-                                {
-                                    this._isDebugTargetNoChanged = false;
-                                    GameUtils.SetDebugTargetNo(this.watcher, baseAddr, this._debugTargetNo);
-                                }
-                                else if (this._debugTargetNo == 0)
-                                {
-                                    this._debugTargetNo = 1;
-                                    this._varInspectTargetNo = 1;
-                                    GameUtils.SetDebugTargetNo(this.watcher, baseAddr, this._debugTargetNo);
-                                }
-                                else
-                                {
-                                    int debugNo = GameUtils.GetDebugTargetNo(this.watcher);
-                                    if (this._debugTargetNo != debugNo)
-                                    {
-                                        this._debugTargetNo = debugNo;
-                                        if (this.watcher.GetMugenProcess() != null)
-                                            this.BeginInvoke((Action)(() => debugForm.SetDebugTargetNo(debugNo)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                                    }
-                                }
-                            }
-                            if (this._isDebugMode)
-                            {
-                                if (this._debugColor != DebugColor.NONE)
-                                {
-                                    this._debugColorChanged = false;
-                                    this.SetDebugColor(baseAddr, this._debugColor);
-                                }
-                                else if (this._debugColorChanged)
-                                {
-                                    this._debugColorChanged = false;
-                                    this.SetDebugColor(baseAddr, DebugColor.NONE);
-                                }
-                            }
-                            if (this.debugP != null && this._triggerCheckTarget != null && (this._triggerCheckTarget.IsDirty() && this.watchAddr == 0U))
-                            {
-                                triggerValueT.reset();
-                                if (this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_START)
-                                {
-                                    if (this._SetBreakPoint(baseAddr))
-                                    {
-                                        this._triggerCheckTarget.SetNextCommand(TriggerCheckTarget.CheckCommand.CHECKCMD_NONE);
-                                        this._triggerCheckTarget.SetCurrentMode(TriggerCheckTarget.CheckMode.CHECKMODE_STARTED);
-                                        this._triggerCheckTarget.ResetDirty();
-                                        this.BeginInvoke((Action)(() => DebugForm.MainObj().EnableTriggerCheckStopButton()))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                                        this.BeginInvoke((Action)(() => this.Activate()));
-                                    }
-                                }
-                                else if (this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_STOP)
-                                {
-                                    this._triggerCheckTarget.SetNextCommand(TriggerCheckTarget.CheckCommand.CHECKCMD_NONE);
-                                    this._triggerCheckTarget.SetCurrentMode(TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED);
-                                    this._triggerCheckTarget.ResetDirty();
-                                    this._ClearBreakPoint();
-                                    this.BeginInvoke((Action)(() => DebugForm.MainObj().EnableTriggerCheckStartButton()))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                                }
-                            }
-                            ++num8;
-                            if (num8 >= 1)
-                            {
-                                num8 = 0;
-                                if (this._isDebugMode)
-                                {
-                                    // setup values for various debug form views
-                                    switch (this._debugListMode)
-                                    {
-                                        case MugenWindow.DebugListMode.PLAYER_LIST_MODE:
-                                            this.ListUpPlayers(baseAddr);
-                                            break;
-                                        case MugenWindow.DebugListMode.EXPLOD_LIST_MODE:
-                                            this.ListUpExplods(baseAddr);
-                                            break;
-                                        case MugenWindow.DebugListMode.PROJ_LIST_MODE:
-                                            switch (this._projOwner)
-                                            {
-                                                case MugenWindow.ProjOwner.P1:
-                                                    this.ListUpProjs(this.player1Id, playerAddr1);
-                                                    break;
-                                                case MugenWindow.ProjOwner.P2:
-                                                    this.ListUpProjs(this.player2Id, playerAddr2);
-                                                    break;
-                                                case MugenWindow.ProjOwner.P3:
-                                                    this.ListUpProjs(this.player3Id, playerAddr3);
-                                                    break;
-                                                case MugenWindow.ProjOwner.P4:
-                                                    this.ListUpProjs(this.player4Id, playerAddr4);
-                                                    break;
-                                            }
-                                            break;
-                                        default:
-                                            this.ListUpPlayers(baseAddr);
-                                            break;
-                                    }
-                                    this.UpdateVariables(baseAddr);
-                                }
-                            }
-                            if (flag1)
-                            {
-                                // handling for long RoundState=0,4
-                                int roundState1 = GameUtils.GetRoundState(this.watcher);
-                                if (roundState1 == 0)
-                                {
-                                    this._invokeWaitTime = 20;
-                                    team1Wins = GameUtils.GetTeam1WinCount(this.watcher);
-                                    team2Wins = GameUtils.GetTeam2WinCount(this.watcher);
-                                    drawRounds = GameUtils.GetDrawGameCount(this.watcher);
-                                    gameTime = (uint)GameUtils.GetGameTime(this.watcher);
-                                    int speedMode = GameUtils.IsSpeedMode(this.watcher) ? 1 : 0;
-                                    bool isSkipMode = GameUtils.IsSkipMode(this.watcher);
-                                    int prevSpeedMode = this._isSpeedMode ? 1 : 0;
-                                    if (speedMode != prevSpeedMode)
-                                        GameUtils.SetSpeedMode(this.watcher, baseAddr, this._isSpeedMode);
-                                    if (isSkipMode != this._isSkipMode)
-                                        GameUtils.SetSkipMode(this.watcher, baseAddr, this._isSkipMode, this._skipModeFrames);
-                                    if (num11 == 0L)
-                                    {
-                                        now = DateTime.Now;
-                                        num11 = now.Ticks / 10000000L;
-                                    }
-                                    MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                    if (profile != null && profile.IsAutoMode())
-                                    {
-                                        long maxRoundState1Time = (long)profile.GetMaxRoundState1Time();
-                                        now = DateTime.Now;
-                                        long num22 = now.Ticks / 10000000L;
-                                        if (maxRoundState1Time > 0L && num22 > num11 + maxRoundState1Time && !this._isMugenFrozen)
-                                        {
-                                            this._isMugenFrozen = true;
-                                            if (logManager != null)
-                                                AsyncAppendLog("Startup is taking too long.");
-                                        }
-                                    }
-                                }
-                                else if (flag6 || roundState1 == 4)
-                                {
-                                    if (!GameUtils.IsPaused(this.watcher) && !this._isDebugBreakMode)
-                                    {
-                                        ++num6;
-                                        if (num6 == num5)
-                                        {
-                                            if ((int)GameUtils.GetGameTime(this.watcher) - (int)gameTime == 0)
-                                            {
-                                                this._isMugenFrozen = true;
-                                                this._invokeWaitTime = 10;
-                                            }
-                                            num6 = 0;
-                                            gameTime = (uint)GameUtils.GetGameTime(this.watcher);
-                                        }
-                                    }
-                                    else
-                                        num6 = 0;
-                                    if (this.watcher.GetMugenProcess() != null)
-                                        this.BeginInvoke((Action)(() => debugForm.SetPauseCheckBox(GameUtils.IsPaused(this.watcher))))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                                    if (GameUtils.IsPaused(this.watcher) && this._isStepMode)
-                                    {
-                                        now = DateTime.Now;
-                                        this._stepModeCounter = now.Ticks / 10000L;
-                                        if (this._stepModeCounter - this._stepModeLastCounter > this._stepModeInterval)
-                                        {
-                                            this._stepModeLastCounter = this._stepModeCounter;
-                                            this.InjectStepCommand();
-                                        }
-                                    }
-                                    bool currentSpeedMode = GameUtils.IsSpeedMode(this.watcher);
-                                    bool flag9 = GameUtils.IsSkipMode(this.watcher);
-                                    int skipFrames = GameUtils.GetSkipFrames(this.watcher);
-                                    if (roundState1 < 3)
-                                    {
-                                        if (this._isSpeedModeChanged)
-                                        {
-                                            this._isSpeedModeChanged = false;
-                                            if (currentSpeedMode != this._isSpeedMode)
-                                            {
-                                                GameUtils.SetSpeedMode(this.watcher, baseAddr, this._isSpeedMode);
-                                                this._wasSpeedModeChanged = true;
-                                            }
-                                        }
-                                        else if (currentSpeedMode != this._isSpeedMode)
-                                        {
-                                            if (this._wasSpeedModeChanged)
-                                            {
-                                                GameUtils.SetSpeedMode(this.watcher, baseAddr, this._isSpeedMode);
-                                                this._wasSpeedModeChanged = false;
-                                            }
-                                            else
-                                            {
-                                                this._isSpeedMode = currentSpeedMode;
-                                                if (this.watcher.GetMugenProcess() != null)
-                                                    this.BeginInvoke((Action)(() => debugForm.SetSpeedModeCheckBox(currentSpeedMode, false)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
-                                            }
-                                        }
-                                        if (flag9 != this._isSkipMode || flag9 && skipFrames != this._skipModeFrames)
-                                            GameUtils.SetSkipMode(this.watcher, baseAddr, this._isSkipMode, this._skipModeFrames);
-                                    }
-                                }
-                                // handler for checking if Mugen crashed or froze during RoundState=[1,3]
-                                // as well as data read/load/update
-                                int roundState2 = GameUtils.GetRoundState(this.watcher);
-                                if (roundState2 >= 1 && roundState2 <= 3 && (flag2 & flag3 && !this._isMugenCrashed))
-                                {
-                                    if (!flag6)
-                                    {
-                                        flag6 = true;
-                                        num11 = 0L;
-                                        num12 = 0L;
-                                        num13 = 0L;
-                                        num14 = 0L;
-                                        num15 = 0L;
-                                        num16 = 0L;
-                                        num18 = GameUtils.GetRoundNoOfMatch(this.watcher);
-                                        team1Wins = GameUtils.GetTeam1WinCount(this.watcher);
-                                        team2Wins = GameUtils.GetTeam2WinCount(this.watcher);
-                                        drawRounds = GameUtils.GetDrawGameCount(this.watcher);
-                                        this._isGameQuitted = false;
-                                        if (this._triggerCheckTarget != null)
-                                            this._triggerCheckTarget.SetDirty();
-                                        MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                        if (profile != null && profile.IsAutoMode())
-                                        {
-                                            num18 = !profile.IsStrictRoundMode() ? GameUtils.GetRoundNoOfMatch(this.watcher) : GameUtils.GetRoundNoOfMatch(this.watcher) - 1;
-                                            if (!GameUtils.IsDebugMode(this.watcher))
-                                                GameUtils.EnableDebugKey(this.watcher, baseAddr, true);
-                                            this.BeginInvoke((Action)(() => DebugForm.MainObj().SetSpeedModeCheckBox(profile.IsSpeedMode(), true)));
-                                            this.BeginInvoke((Action)(() => DebugForm.MainObj().SetSkipModeCheckBox(profile.IsSkipMode())));
-                                            this.BeginInvoke((Action)(() => DebugForm.MainObj().SetDebugModeCheckBox(profile.IsDebugMode(), true)));
-                                            if (profile.IsStrictRoundMode())
-                                            {
-                                                int team1WinCount = GameUtils.GetTeam1WinCount(this.watcher);
-                                                int team2WinCount = GameUtils.GetTeam2WinCount(this.watcher);
-                                                int num20 = num18;
-                                                if (team1WinCount >= num20 || team2WinCount >= num18)
-                                                {
-                                                    flag6 = false;
-                                                    if (this.watcher.CheckMugenProcessActive())
-                                                    {
-                                                        this.KillGracefully();
-                                                        continue;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    else
-                                    {
-                                        MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                        if (profile != null && profile.IsAutoMode() && GameUtils.GetRoundNo(this.watcher) > trueTeam1WinCount + trueTeam2WinCount + drawRounds + 1)
-                                        {
-                                            flag7 = false;
-                                            flag6 = false;
-                                            flag8 = true;
-                                            int num20 = GameUtils.GetDrawGameCount(this.watcher) + 1;
-                                            GameUtils.SetDrawGameCount(this.watcher, num20);
-                                            if (logManager != null)
-                                            {
-                                                AsyncAppendLog("Quit possibly, this game was fixed in some manner.");
-                                                AsyncAppendLog("⇒ Draw.");
-                                            }
-                                        }
-                                    }
-                                }
-                                if (roundState2 == 1)
-                                {
-                                    this._invokeWaitTime = 20;
-                                    num11 = 0L;
-                                    num13 = 0L;
-                                    num14 = 0L;
-                                    num15 = 0L;
-                                    num16 = 0L;
-                                    if (num12 == 0L)
-                                    {
-                                        now = DateTime.Now;
-                                        num12 = now.Ticks / 10000000L;
-                                    }
-                                    MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                    if (profile != null && profile.IsAutoMode())
-                                    {
-                                        long maxRoundState1Time = (long)profile.GetMaxRoundState1Time();
-                                        now = DateTime.Now;
-                                        long num20 = now.Ticks / 10000000L;
-                                        if (maxRoundState1Time > 0L && num20 > num12 + maxRoundState1Time)
-                                        {
-                                            if (logManager != null)
-                                                AsyncAppendLog("The introductions phase has been skipped as it was too long.");
-                                            GameUtils.SetRoundState(this.watcher, 2);
-                                            if (playerAddr1 != 0U)
-                                                PlayerUtils.SetCtrl(this.watcher, playerAddr1, true);
-                                            if (playerAddr2 != 0U)
-                                                PlayerUtils.SetCtrl(this.watcher, playerAddr2, true);
-                                            if (playerAddr3 != 0U)
-                                                PlayerUtils.SetCtrl(this.watcher, playerAddr3, true);
-                                            if (playerAddr4 != 0U)
-                                                PlayerUtils.SetCtrl(this.watcher, playerAddr4, true);
-                                        }
-                                    }
-                                }
-                                if (roundState2 == 2)
-                                {
-                                    this._invokeWaitTime = 20;
-                                    num11 = 0L;
-                                    num12 = 0L;
-                                    num14 = 0L;
-                                    num15 = 0L;
-                                    num16 = 0L;
-                                    if (num13 == 0L)
-                                    {
-                                        now = DateTime.Now;
-                                        num13 = now.Ticks / 10000000L;
-                                        if (logManager != null)
-                                            AsyncAppendLog("Round " + (object)GameUtils.GetRoundNo(this.watcher) + " start!");
-                                    }
-                                    MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                    if (profile != null && profile.IsAutoMode())
-                                    {
-                                        if (GameUtils.GetRoundTime(this.watcher) <= 30 && GameUtils.IsSpeedMode(this.watcher))
-                                            GameUtils.SetSpeedMode(this.watcher, baseAddr, false);
-                                        long maxRoundTime = (long)profile.GetMaxRoundTime();
-                                        now = DateTime.Now;
-                                        long num20 = now.Ticks / 10000000L;
-                                        if (maxRoundTime > 0L && num20 > num13 + maxRoundTime)
-                                        {
-                                            flag7 = false;
-                                            flag6 = false;
-                                            flag8 = true;
-                                            int num21 = GameUtils.GetDrawGameCount(this.watcher) + 1;
-                                            GameUtils.SetDrawGameCount(this.watcher, num21);
-                                            this.watcher.SetInt32Data(baseAddr, this.watcher.MugenDatabase.ROUND_STATE_BASE_OFFSET, 3);
-                                            int roundNo = GameUtils.GetRoundNo(this.watcher);
-                                            GameUtils.SetRoundNo(this.watcher, roundNo + 1);
-                                            this.InjectF4();
-                                            if (logManager != null)
-                                            {
-                                                AsyncAppendLog(profile.GetMaxRoundTimeRawData().ToString() + "Minutes have elapsed.");
-                                                AsyncAppendLog("⇒ Draw.");
-                                            }
-                                        }
-                                    }
-                                }
-                                if (roundState2 == 3)
-                                {
-                                    this._invokeWaitTime = 10;
-                                    num11 = 0L;
-                                    num12 = 0L;
-                                    num13 = 0L;
-                                    num15 = 0L;
-                                    num16 = 0L;
-                                    if (num14 == 0L)
-                                    {
-                                        now = DateTime.Now;
-                                        num14 = now.Ticks / 10000000L;
-                                    }
-                                    MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                    if (profile != null && profile.IsAutoMode())
-                                    {
-                                        long maxRoundState4Time = (long)profile.GetMaxRoundState4Time();
-                                        now = DateTime.Now;
-                                        long num20 = now.Ticks / 10000000L;
-                                        if (maxRoundState4Time > 0L && num20 > num14 + maxRoundState4Time)
-                                        {
-                                            if (logManager != null)
-                                                AsyncAppendLog("This round was suspended in order to begin the next one.");
-                                            flag7 = false;
-                                            flag6 = false;
-                                            flag8 = true;
-                                            int num21 = GameUtils.GetDrawGameCount(this.watcher) + 1;
-                                            GameUtils.SetDrawGameCount(this.watcher, num21);
-                                            int roundNo = GameUtils.GetRoundNo(this.watcher);
-                                            GameUtils.SetRoundNo(this.watcher, roundNo + 1);
-                                            this.InjectF4();
-                                            if (logManager != null)
-                                                AsyncAppendLog("⇒ Draw.");
-                                        }
-                                    }
-                                }
-                                if (roundState2 == 4)
-                                {
-                                    this._invokeWaitTime = 10;
-                                    num11 = 0L;
-                                    num12 = 0L;
-                                    num13 = 0L;
-                                    num14 = 0L;
-                                    num16 = 0L;
-                                    if (num15 == 0L)
-                                    {
-                                        now = DateTime.Now;
-                                        num15 = now.Ticks / 10000000L;
-                                    }
-                                    MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                    if (profile != null && profile.IsAutoMode())
-                                    {
-                                        long maxRoundState4Time = (long)profile.GetMaxRoundState4Time();
-                                        now = DateTime.Now;
-                                        long num20 = now.Ticks / 10000000L;
-                                        if (maxRoundState4Time > 0L && num20 > num15 + maxRoundState4Time)
-                                        {
-                                            GameUtils.GetRoundTime(this.watcher);
-                                            if (logManager != null)
-                                                AsyncAppendLog("This round was suspended in order to begin the next one.");
-                                            if (!flag6)
-                                            {
-                                                int roundNo = GameUtils.GetRoundNo(this.watcher);
-                                                GameUtils.SetRoundNo(this.watcher, roundNo + 1);
-                                                this.InjectF4();
-                                            }
-                                            else
-                                            {
-                                                flag7 = false;
-                                                flag6 = false;
-                                                flag8 = true;
-                                                int num21 = GameUtils.GetDrawGameCount(this.watcher) + 1;
-                                                GameUtils.SetDrawGameCount(this.watcher, num21);
-                                                int roundNo = GameUtils.GetRoundNo(this.watcher);
-                                                GameUtils.SetRoundNo(this.watcher, roundNo + 1);
-                                                this.InjectF4();
-                                                if (logManager != null)
-                                                    AsyncAppendLog("⇒ Draw.");
-                                            }
-                                        }
-                                    }
-                                }
-                                // win determination segment
-                                if (roundState2 >= 2 & flag6 | flag8)
-                                {
-                                    if (roundState2 >= 3)
-                                    {
-                                        int num20 = GameUtils.IsSpeedMode(this.watcher) ? 1 : 0;
-                                        bool flag9 = GameUtils.IsSkipMode(this.watcher);
-                                        if (num20 != 0)
-                                            GameUtils.SetSpeedMode(this.watcher, baseAddr, false);
-                                        if (flag9)
-                                            GameUtils.SetSkipMode(this.watcher, baseAddr, false, this._skipModeFrames);
-                                    }
-                                    num11 = 0L;
-                                    num12 = 0L;
-                                    int team1WinCount = GameUtils.GetTeam1WinCount(this.watcher);
-                                    int team2WinCount = GameUtils.GetTeam2WinCount(this.watcher);
-                                    int newDrawGameCount = GameUtils.GetDrawGameCount(this.watcher);
-                                    if (!flag8)
-                                    {
-                                        if (team1WinCount > team1Wins && team2WinCount == team2Wins)
-                                        {
-                                            flag7 = true;
-                                            flag6 = false;
-                                            ++trueTeam1WinCount;
-                                            if (GameUtils.IsTeam1WinKO(this.watcher))
-                                                ++num3;
-                                            if (logManager != null)
-                                            {
-                                                if (GameUtils.IsTeam1WinKO(this.watcher))
-                                                    AsyncAppendLog("⇒ Player 1 side wins by K.O.");
-                                                else
-                                                    AsyncAppendLog("⇒  Player 1 side wins by judgement.");
-                                            }
-                                        }
-                                        else if (team2WinCount > team2Wins && team1WinCount == team1Wins)
-                                        {
-                                            flag7 = true;
-                                            flag6 = false;
-                                            ++trueTeam2WinCount;
-                                            if (GameUtils.IsTeam2WinKO(this.watcher))
-                                                ++num4;
-                                            if (logManager != null)
-                                            {
-                                                if (GameUtils.IsTeam2WinKO(this.watcher))
-                                                    AsyncAppendLog("⇒ Player 2 side wins by K.O.");
-                                                else
-                                                    AsyncAppendLog("⇒ Player 2 side wins by judgement.");
-                                            }
-                                        }
-                                        else if (newDrawGameCount > drawRounds)
-                                        {
-                                            flag7 = true;
-                                            flag6 = false;
-                                            if (logManager != null && this.watcher.GetMugenProcess() != null)
-                                                AsyncAppendLog("⇒ Draw.");
-                                        }
-                                    }
-                                    if (!flag6 | flag8)
-                                    {
-                                        flag8 = false;
-                                        MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                                        if (!GameUtils.IsTurnsMode(this.watcher) || profile != null && profile.IsAutoMode() && profile.IsStrictRoundMode())
-                                        {
-                                            if (team1WinCount >= num18 && team2WinCount < num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && trueTeam1WinCount + newDrawGameCount >= num18) && trueTeam2WinCount + newDrawGameCount < num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && trueTeam1WinCount > trueTeam2WinCount) && trueTeam1WinCount + trueTeam2WinCount + newDrawGameCount >= num18)
-                                            {
-                                                flag7 = false;
-                                                this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
-                                                if (this.watcher.GetMugenProcess() != null)
-                                                    AsyncAppendLog(">>> " + (object)trueTeam1WinCount + "Wins" + (object)trueTeam2WinCount + "Losses" + (object)newDrawGameCount + "Draws. Resulting in victory for the player 1 side.");
-                                                if (profile != null && !profile.IsQuickMode())
-                                                {
-                                                    this.UpdatePlayerDataEx(displayName2, palnoA1, displayName4, palnoB1, 1, 0, 0, 0, 0, trueTeam1WinCount, num3, trueTeam2WinCount, num4, newDrawGameCount, 0, 0);
-                                                    this.UpdatePlayerDataEx(displayName3, palnoA2, displayName5, palnoB2, 0, 1, 0, 0, 0, trueTeam2WinCount, num4, trueTeam1WinCount, num3, newDrawGameCount, 0, 0);
-                                                }
-                                                if (profile != null && profile.IsAutoMode())
-                                                {
-                                                    profile.IncrementTempGameCount();
-                                                    if (num16 == 0L)
-                                                    {
-                                                        now = DateTime.Now;
-                                                        num16 = now.Ticks / 10000000L;
-                                                    }
-                                                    if (team1WinCount < num18)
-                                                        GameUtils.SetTeam1WinCount(this.watcher, 100);
-                                                    if (this.watcher.GetMugenProcess() != null && !profile.WasLastFight())
-                                                        AsyncAppendLog("Starting next match");
-                                                }
-                                            }
-                                            else if (team1WinCount < num18 && team2WinCount >= num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && trueTeam1WinCount + newDrawGameCount < num18) && trueTeam2WinCount + newDrawGameCount >= num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && trueTeam1WinCount < trueTeam2WinCount) && trueTeam1WinCount + trueTeam2WinCount + newDrawGameCount >= num18)
-                                            {
-                                                flag7 = false;
-                                                this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
-                                                if (this.watcher.GetMugenProcess() != null && !profile.WasLastFight())
-                                                    AsyncAppendLog(">>> " + (object)trueTeam2WinCount + "Wins" + (object)trueTeam1WinCount + "Losses" + (object)newDrawGameCount + "Draws. Resulting in victory for the player 2 side.");
-                                                if (profile != null && !profile.IsQuickMode())
-                                                {
-                                                    this.UpdatePlayerDataEx(displayName2, palnoA1, displayName4, palnoB1, 0, 1, 0, 0, 0, trueTeam1WinCount, num3, trueTeam2WinCount, num4, newDrawGameCount, 0, 0);
-                                                    this.UpdatePlayerDataEx(displayName3, palnoA2, displayName5, palnoB2, 1, 0, 0, 0, 0, trueTeam2WinCount, num4, trueTeam1WinCount, num3, newDrawGameCount, 0, 0);
-                                                }
-                                                if (profile != null && profile.IsAutoMode())
-                                                {
-                                                    profile.IncrementTempGameCount();
-                                                    if (num16 == 0L)
-                                                    {
-                                                        now = DateTime.Now;
-                                                        num16 = now.Ticks / 10000000L;
-                                                    }
-                                                    if (team2WinCount < num18)
-                                                        GameUtils.SetTeam2WinCount(this.watcher, 100);
-                                                    if (this.watcher.GetMugenProcess() != null && !profile.WasLastFight())
-                                                        AsyncAppendLog("Starting next match");
-                                                }
-                                            }
-                                            else if (team1WinCount >= num18 && team2WinCount >= num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && trueTeam1WinCount + newDrawGameCount >= num18) && trueTeam2WinCount + newDrawGameCount >= num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && trueTeam1WinCount == trueTeam2WinCount) && trueTeam1WinCount + trueTeam2WinCount + newDrawGameCount >= num18)
-                                            {
-                                                flag7 = false;
-                                                this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
-                                                if (this.watcher.GetMugenProcess() != null)
-                                                    AsyncAppendLog(">>> " + (object)trueTeam1WinCount + "Wins" + (object)trueTeam2WinCount + "Losses" + (object)newDrawGameCount + "Draws. Resulting in an overall draw.");
-                                                if (profile != null && !profile.IsQuickMode())
-                                                {
-                                                    this.UpdatePlayerDataEx(displayName2, palnoA1, displayName4, palnoB1, 0, 0, 1, 0, 0, trueTeam1WinCount, num3, trueTeam2WinCount, num4, newDrawGameCount, 0, 0);
-                                                    this.UpdatePlayerDataEx(displayName3, palnoA2, displayName5, palnoB2, 0, 0, 1, 0, 0, trueTeam2WinCount, num4, trueTeam1WinCount, num3, newDrawGameCount, 0, 0);
-                                                }
-                                                if (profile != null && profile.IsAutoMode())
-                                                {
-                                                    profile.IncrementTempGameCount();
-                                                    if (num16 == 0L)
-                                                    {
-                                                        now = DateTime.Now;
-                                                        num16 = now.Ticks / 10000000L;
-                                                    }
-                                                    if (team1WinCount < num18 || team2WinCount < num18)
-                                                    {
-                                                        GameUtils.SetTeam1WinCount(this.watcher, 100);
-                                                        GameUtils.SetTeam2WinCount(this.watcher, 100);
-                                                    }
-                                                    if (this.watcher.GetMugenProcess() != null && !profile.WasLastFight())
-                                                        AsyncAppendLog("Starting next match");
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                else
-                    break;
-            }
-            if (flag6 | flag7)
-            {
-                this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
-                this._invokeWaitTime = 20;
-                MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
-                if (baseAddr != 0U && !GameUtils.IsTurnsMode(this.watcher) || profile != null && profile.IsAutoMode())
-                {
-                    if (this._isMugenFrozen)
-                    {
-                        this._isGameQuitted = true;
-                        if (logManager != null)
-                            AsyncAppendLog("Process quit unexpectedly");
-                        if (profile != null && !profile.IsQuickMode())
-                        {
-                            this.UpdatePlayerDataEx(displayName2, palnoA1, displayName4, palnoB1, 0, 0, 0, 1, 0, trueTeam1WinCount, num3, trueTeam2WinCount, num4, drawRounds, 1, 0);
-                            this.UpdatePlayerDataEx(displayName3, palnoA2, displayName5, palnoB2, 0, 0, 0, 1, 0, trueTeam2WinCount, num4, trueTeam1WinCount, num3, drawRounds, 1, 0);
-                        }
-                    }
-                    else
-                    {
-                        this._isGameQuitted = true;
-                        if (logManager != null)
-                            AsyncAppendLog("The match was cancelled");
-                        if (profile != null && !profile.IsQuickMode())
-                        {
-                            this.UpdatePlayerDataEx(displayName2, palnoA1, displayName4, palnoB1, 0, 0, 0, 0, 1, trueTeam1WinCount, num3, trueTeam2WinCount, num4, drawRounds, 0, 1);
-                            this.UpdatePlayerDataEx(displayName3, palnoA2, displayName5, palnoB2, 0, 0, 0, 0, 1, trueTeam2WinCount, num4, trueTeam1WinCount, num3, drawRounds, 0, 1);
-                        }
-                    }
-                    if (profile != null && profile.IsAutoMode() && this.watcher.CheckMugenProcessActive())
-                        this.watcher.GetMugenProcess().Kill();
-                }
-            }
-            while (this.debugP != null)
-            {
-                NativeEvent nativeEvent2 = this.debugControl.WaitForDebugEvent(16);
-                if (nativeEvent2 != null)
-                {
-                    nativeEvent2.Process.HandleIfLoaderBreakpoint(nativeEvent2);
-                    this.debugControl.ContinueEvent(nativeEvent2);
-                    if (nativeEvent2 is ExitProcessDebugEvent)
-                    {
-                        try
-                        {
-                            this.debugControl.Detach(this.debugP);
-                            this.debugP.Dispose();
-                        }
-                        catch
-                        {
-                        }
-                        this.debugP = (NativeDbgProcess)null;
-                    }
-                }
-                else
-                {
-                    try
-                    {
-                        this.debugControl.Detach(this.debugP);
-                        this.debugP.Dispose();
-                    }
-                    catch
-                    {
-                    }
-                    this.debugP = (NativeDbgProcess)null;
-                }
-            }
-            this.BeginInvoke((Action)(() => DebugForm.MainObj().PostFinalizeTriggerCheck(this.watcher.MugenVersion)));
+            this.WatchInitVal = (uint)this.watcher.GetInt32Data(this.watchAddr, 0);
         }
 
         /// <summary>
@@ -4074,7 +2131,6 @@ namespace SwissArmyKnifeForMugen
             this.components = (IContainer)new Container();
             ComponentResourceManager componentResourceManager = new ComponentResourceManager(typeof(MugenWindow));
             this.backgroundBox = new PictureBox();
-            this.mugenWatcher = new BackgroundWorker();
             this.toolTip1 = new ToolTip(this.components);
             this.activateTimer = new System.Windows.Forms.Timer(this.components);
             ((ISupportInitialize)this.backgroundBox).BeginInit();
@@ -4089,8 +2145,6 @@ namespace SwissArmyKnifeForMugen
             this.backgroundBox.TabStop = false;
             this.backgroundBox.Paint += new PaintEventHandler(this.backgroundBox_Paint);
             this.backgroundBox.MouseClick += new MouseEventHandler(this.backgroundBox_MouseClick);
-            this.mugenWatcher.WorkerSupportsCancellation = true;
-            this.mugenWatcher.DoWork += new DoWorkEventHandler(this.mugenWatcher_DoWork);
             this.activateTimer.Enabled = true;
             this.activateTimer.Interval = 1000;
             this.activateTimer.Tick += new EventHandler(this.activateTimer_Tick);
@@ -4117,6 +2171,1777 @@ namespace SwissArmyKnifeForMugen
             this.ResumeLayout(false);
         }
 
+        /// <summary>
+        /// main loop for the monitor function. this function is responsible for handling most data reads, updates, breakpoints, etc.
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        /// 
+
+        internal struct DebugPassInfo
+        {
+            internal uint baseAddr;
+            internal uint playerAddr1;
+            internal uint playerAddr2;
+            internal uint playerAddr3;
+            internal uint playerAddr4;
+            internal bool flag1;
+            internal bool flag2;
+            internal bool flag3;
+            internal bool flag4;
+            internal bool flag5;
+            internal bool flag6;
+            internal bool flag7;
+            internal bool flag8;
+            internal int team1Wins;
+            internal int team2Wins;
+            internal int trueTeam1WinCount;
+            internal int trueTeam2WinCount;
+            internal int num3;
+            internal int num4;
+            internal int drawRounds;
+            internal string displayName1;
+            internal string displayName2;
+            internal string displayName3;
+            internal string displayName4;
+            internal string displayName5;
+            internal int palnoA1;
+            internal int palnoA2;
+            internal int palnoB1;
+            internal int palnoB2;
+            internal int num5;
+            internal int num6;
+            internal uint gameTime;
+            internal int num8;
+            internal long num9;
+            internal long num10;
+            internal long num11;
+            internal long num12;
+            internal long num13;
+            internal long num14;
+            internal long num15;
+            internal long num16;
+            internal int num17;
+            internal int num18;
+            internal int num19;
+            internal NativeEvent backupNativeEvent;
+            internal TriggerDatabase.TriggerValue_t triggerValueT;
+        }
+
+        private DebugPassInfo debugPassInfo;
+
+        public void Initialize()
+        {
+            this.debugPassInfo = new DebugPassInfo
+            {
+                baseAddr = 0,
+                playerAddr1 = 0,
+                playerAddr2 = 0,
+                playerAddr3 = 0,
+                playerAddr4 = 0,
+                flag1 = false,
+                flag2 = false,
+                flag3 = false,
+                flag4 = false,
+                flag5 = false,
+                flag6 = false,
+                flag7 = false,
+                flag8 = false,
+                team1Wins = 0,
+                team2Wins = 0,
+                trueTeam1WinCount = 0,
+                trueTeam2WinCount = 0,
+                num3 = 0,
+                num4 = 0,
+                drawRounds = 0,
+                displayName1 = "",
+                displayName2 = (string) null,
+                displayName3 = (string) null,
+                displayName4 = (string) null,
+                displayName5 = (string) null,
+                palnoA1 = 0,
+                palnoA2 = 0,
+                palnoB1 = 0,
+                palnoB2 = 0,
+                num5 = 300,
+                num6 = 0,
+                gameTime = 0,
+                num8 = 0,
+                num9 = 0,
+                num10 = 0,
+                num11 = 0,
+                num12 = 0,
+                num13 = 0,
+                num14 = 0,
+                num15 = 0,
+                num16 = 0,
+                num17 = 0,
+                num18 = 0,
+                num19 = 2,
+                backupNativeEvent = (NativeEvent) null,
+            };
+        }
+
+        // called during event loop when the debug process is set up (polling debug events)
+        public void HandleNativeEvent(NativeEvent awaitedNativeEvent)
+        {
+            LogManager logManager = LogManager.MainObj();
+            DebugForm debugForm = DebugForm.MainObj();
+            // backup native event
+            this.debugPassInfo.backupNativeEvent = (NativeEvent)null;
+            // used throughout
+            this.debugPassInfo.baseAddr = 0;
+            // this is false by default+we set to true if mugen is really active
+            this._isMugenActive = false;
+            switch (awaitedNativeEvent.m_union.Exception.ExceptionRecord.ExceptionCode)
+            {
+                // these cases correspond to hardware bp?
+                case ExceptionCode.STATUS_WOW64_SINGLESTEP:
+                case ExceptionCode.STATUS_SINGLESTEP:
+                    // check if read value type matches expected type + is in range/matching
+                    bool triggerValueValid = false;
+                    // read current value
+                    TriggerDatabase.TriggerValue_t triggerValue = this.GetTriggerValue(this.debugPassInfo.baseAddr);
+                    // make sure not empty
+                    if (triggerValue != null && !this.debugPassInfo.triggerValueT.isEqual(triggerValue))
+                    {
+                        this.debugPassInfo.triggerValueT = triggerValue;
+                        // used for verification, switching first on value type and then on operator.
+                        // complicated but its mostly the same for each.
+                        switch (triggerValue.valueType)
+                        {
+                            case TriggerDatabase.ValueType.VALUE_BOOL:
+                                TriggerDatabase.TriggerValue_t targetValueFrom1 = this._triggerCheckTarget.GetTargetValueFrom();
+                                if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_BOOL)
+                                {
+                                    switch (this._triggerCheckTarget.GetTargetValueOpType())
+                                    {
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
+                                            if (triggerValue.GetBoolValue() == targetValueFrom1.GetBoolValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
+                                            if (triggerValue.GetBoolValue() != targetValueFrom1.GetBoolValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                    }
+                                    if (triggerValueValid)
+                                    {
+                                        this._isDebugBreakMode = true;
+                                        this.debugPassInfo.backupNativeEvent = awaitedNativeEvent;
+                                        break;
+                                    }
+                                    break;
+                                }
+                                if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_ANY)
+                                {
+                                    triggerValueValid = true;
+                                    this._isDebugBreakMode = true;
+                                    this.debugPassInfo.backupNativeEvent = awaitedNativeEvent;
+                                    break;
+                                }
+                                break;
+                            case TriggerDatabase.ValueType.VALUE_INT:
+                                targetValueFrom1 = this._triggerCheckTarget.GetTargetValueFrom();
+                                TriggerDatabase.TriggerValue_t targetValueTo1 = this._triggerCheckTarget.GetTargetValueTo();
+                                triggerValue.mask = targetValueFrom1.mask;
+                                if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_INT)
+                                {
+                                    switch (this._triggerCheckTarget.GetTargetValueOpType())
+                                    {
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
+                                            if (triggerValue.GetMaskedInt32Value() == targetValueFrom1.GetInt32Value())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
+                                            if (triggerValue.GetMaskedInt32Value() != targetValueFrom1.GetInt32Value())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LT:
+                                            if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LE:
+                                            if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_GT:
+                                            if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_GE:
+                                            if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() <= targetValueTo1.GetInt32Value())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_L_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() <= targetValueTo1.GetInt32Value())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_G_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() < targetValueTo1.GetInt32Value())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LG_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() < targetValueTo1.GetInt32Value())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() > targetValueTo1.GetInt32Value())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_L_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() > targetValueTo1.GetInt32Value())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_G_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() >= targetValueTo1.GetInt32Value())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_LG_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() >= targetValueTo1.GetInt32Value())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                    }
+                                    if (triggerValueValid)
+                                    {
+                                        this._isDebugBreakMode = true;
+                                        this.debugPassInfo.backupNativeEvent = awaitedNativeEvent;
+                                        break;
+                                    }
+                                    break;
+                                }
+                                if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_ANY)
+                                {
+                                    triggerValueValid = true;
+                                    this._isDebugBreakMode = true;
+                                    this.debugPassInfo.backupNativeEvent = awaitedNativeEvent;
+                                    break;
+                                }
+                                break;
+                            case TriggerDatabase.ValueType.VALUE_FLOAT:
+                                TriggerDatabase.TriggerValue_t targetValueFrom2 = this._triggerCheckTarget.GetTargetValueFrom();
+                                TriggerDatabase.TriggerValue_t targetValueTo2 = this._triggerCheckTarget.GetTargetValueTo();
+                                if (targetValueFrom2.valueType == TriggerDatabase.ValueType.VALUE_FLOAT)
+                                {
+                                    switch (this._triggerCheckTarget.GetTargetValueOpType())
+                                    {
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
+                                            if ((double)triggerValue.GetSingleValue() == (double)targetValueFrom2.GetSingleValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
+                                            if ((double)triggerValue.GetSingleValue() != (double)targetValueFrom2.GetSingleValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LT:
+                                            if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LE:
+                                            if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_GT:
+                                            if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_GE:
+                                            if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() <= (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_L_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() <= (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_G_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() < (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LG_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() < (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() > (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_L_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() > (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_G_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() >= (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_LG_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() >= (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                triggerValueValid = true;
+                                                break;
+                                            }
+                                            break;
+                                    }
+                                    if (triggerValueValid)
+                                    {
+                                        this._isDebugBreakMode = true;
+                                        this.debugPassInfo.backupNativeEvent = awaitedNativeEvent;
+                                        break;
+                                    }
+                                    break;
+                                }
+                                if (targetValueFrom2.valueType == TriggerDatabase.ValueType.VALUE_ANY)
+                                {
+                                    triggerValueValid = true;
+                                    this._isDebugBreakMode = true;
+                                    this.debugPassInfo.backupNativeEvent = awaitedNativeEvent;
+                                    break;
+                                }
+                                break;
+                        }
+                    }
+                    uint p1Addr = GameUtils.GetP1Addr(this.watcher);
+                    // for un-stopping mugen from trigger breakpoints
+                    if (!triggerValueValid || !this.debugPassInfo.flag6 || (p1Addr == 0U || this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_STOP))
+                    {
+                        this.watcher.ContinueEvent(awaitedNativeEvent, false);
+                        this.BeginInvoke((Action)(() => DebugForm.MainObj().DisableTriggerCheckResumeButton()));
+                        if (p1Addr == 0U)
+                            this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
+                        this._isDebugBreakMode = false;
+                        break;
+                    }
+                    IAsyncResult asyncResult = this.BeginInvoke((Action)(() => DebugForm.MainObj().EnableTriggerCheckResumeButton()));
+                    if (asyncResult != null)
+                    {
+                        asyncResult.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                        break;
+                    }
+                    break;
+                // skip over this? since we wait for step event
+                case ExceptionCode.STATUS_WOW64_BREAKPOINT:
+                case ExceptionCode.STATUS_BREAKPOINT:
+                    this.watcher.ContinueEvent(awaitedNativeEvent, false);
+                    break;
+                default:
+                    this.watcher.ContinueEvent(awaitedNativeEvent, false);
+                    if (this.watcher.GetDebugProcess() != null)
+                    {
+                        this.watcher.DisposeDebugProcess();
+                    }
+                    if (this.watcher.CheckMugenProcessActive())
+                    {
+                        this.watcher.GetMugenProcess().Kill();
+                        break;
+                    }
+                    break;
+            }
+        }
+
+        // called during event loop when the debug process is set up (polling debug setup)
+        public void HandleUnsetDebugProcess()
+        {
+            if (this.watchAddr == 0U)
+            {
+                Thread.Sleep(16); // waiting to see if debug process gets set
+                if (this.watcher.GetDebugProcess() != null)
+                {
+                    if (this._stopDebugBreakFlag || this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_RESUME || this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_STOP)
+                    {
+                        if (this._triggerCheckTarget.GetNextCommand() != TriggerCheckTarget.CheckCommand.CHECKCMD_STOP && this._triggerCheckTarget.GetCurrentMode() != TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED)
+                        {
+                            this._triggerCheckTarget.SetNextCommand(TriggerCheckTarget.CheckCommand.CHECKCMD_NONE);
+                            this._triggerCheckTarget.SetCurrentMode(TriggerCheckTarget.CheckMode.CHECKMODE_STARTED);
+                            this._triggerCheckTarget.ResetDirty();
+                            if (this.debugPassInfo.backupNativeEvent != null)
+                            {
+                                this.watcher.ContinueEvent(this.debugPassInfo.backupNativeEvent, false);
+                                this.debugPassInfo.backupNativeEvent = (NativeEvent)null;
+                            }
+                        }
+                        else if (this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_STOP && this._triggerCheckTarget.GetCurrentMode() != TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED)
+                        {
+                            this._triggerCheckTarget.SetNextCommand(TriggerCheckTarget.CheckCommand.CHECKCMD_NONE);
+                            this._triggerCheckTarget.SetCurrentMode(TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED);
+                            this._triggerCheckTarget.ResetDirty();
+                            if (this.debugPassInfo.backupNativeEvent != null)
+                            {
+                                this.watcher.ContinueEvent(this.debugPassInfo.backupNativeEvent, false);
+                                this.debugPassInfo.backupNativeEvent = (NativeEvent)null;
+                            }
+                            this.BeginInvoke((Action)(() => DebugForm.MainObj().DisableTriggerCheckResumeButton()));
+                            this.watcher.ClearHardwareBreakpoint();
+                            this.BeginInvoke((Action)(() => DebugForm.MainObj().EnableTriggerCheckStartButton()))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                        }
+                        else if (this.debugPassInfo.backupNativeEvent != null)
+                        {
+                            this.watcher.ContinueEvent(this.debugPassInfo.backupNativeEvent, false);
+                            this.debugPassInfo.backupNativeEvent = (NativeEvent)null;
+                        }
+                        this._stopDebugBreakFlag = false;
+                        if (this._triggerCheckTarget.GetCurrentMode() != TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED)
+                            this.BeginInvoke((Action)(() => DebugForm.MainObj().EnableTriggerCheckStopButton()))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                        this.BeginInvoke((Action)(() => this.DelayedActivate()));
+                        this._isDebugBreakMode = false;
+                    }
+                    else if (this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_NONE && this._triggerCheckTarget.GetCurrentMode() == TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED && this.debugPassInfo.backupNativeEvent != null)
+                    {
+                        this.watcher.ContinueEvent(this.debugPassInfo.backupNativeEvent, false);
+                        this.debugPassInfo.backupNativeEvent = (NativeEvent)null;
+                        this._isDebugBreakMode = false;
+                        this.BeginInvoke((Action)(() => DebugForm.MainObj().DisableTriggerCheckResumeButton()));
+                    }
+                }
+            }
+        }
+
+        public bool MainLoop()
+        {
+            LogManager logManager = LogManager.MainObj();
+            DebugForm debugForm = DebugForm.MainObj();
+            // trigger checking for experimental/sw bps (compare value at watchAddr, no hardware bp involved)
+            if (this.watchAddr != 0U)
+            {
+                uint num20 = 0;
+                // read current value of watchAddr
+                byte[] buf = new byte[4];
+                num20 = (uint)this.watcher.GetInt32Data(this.watchAddr, 0);
+                if ((int)this.WatchInitVal != (int)num20)
+                {
+                    bool isValidTrigger = false;
+                    TriggerDatabase.TriggerValue_t triggerValue = this.GetTriggerValue(this.debugPassInfo.baseAddr);
+                    // everything below here is very similar to hw bp above
+                    if (triggerValue != null && !this.debugPassInfo.triggerValueT.isEqual(triggerValue))
+                    {
+                        this.debugPassInfo.triggerValueT = triggerValue;
+                        switch (triggerValue.valueType)
+                        {
+                            case TriggerDatabase.ValueType.VALUE_BOOL:
+                                TriggerDatabase.TriggerValue_t targetValueFrom1 = this._triggerCheckTarget.GetTargetValueFrom();
+                                if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_BOOL)
+                                {
+                                    switch (this._triggerCheckTarget.GetTargetValueOpType())
+                                    {
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
+                                            if (triggerValue.GetBoolValue() == targetValueFrom1.GetBoolValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
+                                            if (triggerValue.GetBoolValue() != targetValueFrom1.GetBoolValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                    }
+                                    if (isValidTrigger)
+                                    {
+                                        GameUtils.SetPaused(this.watcher, true);
+                                        break;
+                                    }
+                                    break;
+                                }
+                                if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_ANY)
+                                {
+                                    GameUtils.SetPaused(this.watcher, true);
+                                    break;
+                                }
+                                break;
+                            case TriggerDatabase.ValueType.VALUE_INT:
+                                targetValueFrom1 = this._triggerCheckTarget.GetTargetValueFrom();
+                                TriggerDatabase.TriggerValue_t targetValueTo1 = this._triggerCheckTarget.GetTargetValueTo();
+                                triggerValue.mask = targetValueFrom1.mask;
+                                if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_INT)
+                                {
+                                    switch (this._triggerCheckTarget.GetTargetValueOpType())
+                                    {
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
+                                            if (triggerValue.GetMaskedInt32Value() == targetValueFrom1.GetInt32Value())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
+                                            if (triggerValue.GetMaskedInt32Value() != targetValueFrom1.GetInt32Value())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LT:
+                                            if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LE:
+                                            if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_GT:
+                                            if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_GE:
+                                            if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() <= targetValueTo1.GetInt32Value())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_L_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() <= targetValueTo1.GetInt32Value())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_G_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() >= targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() < targetValueTo1.GetInt32Value())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LG_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() > targetValueFrom1.GetInt32Value() && triggerValue.GetMaskedInt32Value() < targetValueTo1.GetInt32Value())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() > targetValueTo1.GetInt32Value())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_L_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() > targetValueTo1.GetInt32Value())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_G_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() < targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() >= targetValueTo1.GetInt32Value())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_LG_FROM_TO:
+                                            if (triggerValue.GetMaskedInt32Value() <= targetValueFrom1.GetInt32Value() || triggerValue.GetMaskedInt32Value() >= targetValueTo1.GetInt32Value())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                    }
+                                    if (isValidTrigger)
+                                    {
+                                        GameUtils.SetPaused(this.watcher, true);
+                                        break;
+                                    }
+                                    break;
+                                }
+                                if (targetValueFrom1.valueType == TriggerDatabase.ValueType.VALUE_ANY)
+                                {
+                                    GameUtils.SetPaused(this.watcher, true);
+                                    break;
+                                }
+                                break;
+                            case TriggerDatabase.ValueType.VALUE_FLOAT:
+                                TriggerDatabase.TriggerValue_t targetValueFrom2 = this._triggerCheckTarget.GetTargetValueFrom();
+                                TriggerDatabase.TriggerValue_t targetValueTo2 = this._triggerCheckTarget.GetTargetValueTo();
+                                if (targetValueFrom2.valueType == TriggerDatabase.ValueType.VALUE_FLOAT)
+                                {
+                                    switch (this._triggerCheckTarget.GetTargetValueOpType())
+                                    {
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_EQ:
+                                            if ((double)triggerValue.GetSingleValue() == (double)targetValueFrom2.GetSingleValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_EQ:
+                                            if ((double)triggerValue.GetSingleValue() != (double)targetValueFrom2.GetSingleValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LT:
+                                            if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LE:
+                                            if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_GT:
+                                            if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_GE:
+                                            if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() <= (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_L_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() <= (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_G_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() >= (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() < (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_LG_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() > (double)targetValueFrom2.GetSingleValue() && (double)triggerValue.GetSingleValue() < (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() > (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_L_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() > (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_G_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() < (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() >= (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                        case TriggerCheckTarget.ValueOpType.VALUE_OP_NOT_LG_FROM_TO:
+                                            if ((double)triggerValue.GetSingleValue() <= (double)targetValueFrom2.GetSingleValue() || (double)triggerValue.GetSingleValue() >= (double)targetValueTo2.GetSingleValue())
+                                            {
+                                                isValidTrigger = true;
+                                                break;
+                                            }
+                                            break;
+                                    }
+                                    if (isValidTrigger)
+                                    {
+                                        GameUtils.SetPaused(this.watcher, true);
+                                        break;
+                                    }
+                                    break;
+                                }
+                                if (targetValueFrom2.valueType == TriggerDatabase.ValueType.VALUE_ANY)
+                                {
+                                    GameUtils.SetPaused(this.watcher, true);
+                                    break;
+                                }
+                                break;
+                        }
+                    }
+                    // fire the experimental bp
+                    if (isValidTrigger)
+                        this.BeginInvoke((Action)(() => DebugForm.MainObj().SetExpBPFired()))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                }
+            }
+            // load data + checks for whether Mugen is frozen, inactive, stuck, etc.
+            if (this.watcher.CheckMugenProcessActive())
+            {
+                DateTime now;
+                // failsafe against unending RoundState=4, kills mugen if detected
+                if (this.debugPassInfo.num16 != 0L)
+                {
+                    MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                    if (profile != null && profile.IsAutoMode())
+                    {
+                        long maxRoundState4Time = (long)profile.GetMaxRoundState4Time();
+                        now = DateTime.Now;
+                        long num20 = now.Ticks / 10000000L;
+                        if (maxRoundState4Time > 0L && num20 > this.debugPassInfo.num16 + maxRoundState4Time)
+                        {
+                            this.debugPassInfo.num16 = 0L;
+                            if (this.watcher.CheckMugenProcessActive())
+                                this.watcher.GetMugenProcess().Kill();
+                        }
+                    }
+                }
+                // other checks
+                if (this.watcher.CheckMugenProcessActive())
+                {
+                    if (this.debugPassInfo.flag7 || !this.debugPassInfo.flag6 && this._isActivatedOnce)
+                    {
+                        IAsyncResult asyncResult = this.BeginInvoke((Action)(() => LogManager.MainObj().IsAvailable()));
+                        if (asyncResult != null && this.watchAddr == 0U)
+                        {
+                            if (!asyncResult.AsyncWaitHandle.WaitOne(5000))
+                            {
+                                ++this.debugPassInfo.num17;
+                                if (this.debugPassInfo.num17 > 1)
+                                {
+                                    switch (this._triggerCheckTarget.GetCurrentMode())
+                                    {
+                                        case TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED:
+                                        case TriggerCheckTarget.CheckMode.CHECKMODE_STARTED:
+                                            this.watcher.GetMugenProcess().Kill();
+                                            break;
+                                        case TriggerCheckTarget.CheckMode.CHECKMODE_SUSPENDED:
+                                            this._triggerCheckTarget.SetNextCommand(TriggerCheckTarget.CheckCommand.CHECKCMD_STOP);
+                                            this._triggerCheckTarget.SetCurrentMode(TriggerCheckTarget.CheckMode.CHECKMODE_STARTED);
+                                            this._triggerCheckTarget.ResetDirty();
+                                            if (this.debugPassInfo.backupNativeEvent != null)
+                                            {
+                                                this.watcher.ContinueEvent(this.debugPassInfo.backupNativeEvent, false);
+                                                this.debugPassInfo.backupNativeEvent = (NativeEvent)null;
+                                            }
+                                            this._stopDebugBreakFlag = false;
+                                            this.BeginInvoke((Action)(() => DebugForm.MainObj().EnableTriggerCheckStartButton()));
+                                            this.watcher.GetMugenProcess().Kill();
+                                            this._isDebugBreakMode = false;
+                                            break;
+                                    }
+                                }
+                            }
+                            else
+                                this.debugPassInfo.num17 = 0;
+                        }
+                    }
+                    // data loading segment?
+                    if (this.debugPassInfo.baseAddr == 0U)
+                        this.debugPassInfo.baseAddr = (uint)GameUtils.GetBaseAddress(this.watcher);
+                    if (this.debugPassInfo.baseAddr != 0U && !GameUtils.IsDemo(this.watcher))
+                    {
+                        if (this.debugPassInfo.baseAddr != 0U)
+                        {
+                            if (this._flagDumpPlayers)
+                            {
+                                this._flagDumpPlayers = false;
+                                this._DumpPlayers(this.debugPassInfo.baseAddr);
+                                if (this.debugPassInfo.flag6 | this.debugPassInfo.flag7)
+                                {
+                                    this.debugPassInfo.flag6 = false;
+                                    this.debugPassInfo.flag7 = false;
+                                    MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                                    if (!GameUtils.IsTurnsMode(this.watcher) && profile != null && !profile.IsQuickMode() || profile != null && profile.IsAutoMode())
+                                    {
+                                        this.UpdatePlayerDataEx(this.debugPassInfo.displayName2, this.debugPassInfo.palnoA1, this.debugPassInfo.displayName4, this.debugPassInfo.palnoB1, 0, 0, 0, 1, 0, this.debugPassInfo.trueTeam1WinCount, this.debugPassInfo.num3, this.debugPassInfo.trueTeam2WinCount, this.debugPassInfo.num4, this.debugPassInfo.drawRounds, 1, 0);
+                                        this.UpdatePlayerDataEx(this.debugPassInfo.displayName3, this.debugPassInfo.palnoA2, this.debugPassInfo.displayName5, this.debugPassInfo.palnoB2, 0, 0, 0, 1, 0, this.debugPassInfo.trueTeam2WinCount, this.debugPassInfo.num4, this.debugPassInfo.trueTeam1WinCount, this.debugPassInfo.num3, this.debugPassInfo.drawRounds, 1, 0);
+                                        return false;
+                                    }
+                                }
+                            }
+                            if (this.watcher.CheckMugenProcessActive() && this.debugPassInfo.num19 > 0)
+                            {
+                                now = DateTime.Now;
+                                if (now.Ticks / 10000000L % 2L == 0L)
+                                {
+                                    this.SetForegroundWindowEx(this.watcher.GetMugenWindowHandle());
+                                    if (GameUtils.IsMugenActive(this.watcher))
+                                        --this.debugPassInfo.num19;
+                                }
+                            }
+                            this.debugPassInfo.playerAddr1 = GameUtils.GetP1Addr(this.watcher);
+                            if (this.debugPassInfo.playerAddr1 == 0U)
+                            {
+                                this.debugPassInfo.flag1 = false;
+                                if (this.debugPassInfo.flag6 | this.debugPassInfo.flag7)
+                                {
+                                    this.debugPassInfo.flag6 = false;
+                                    this.debugPassInfo.flag7 = false;
+                                    int num20 = GameUtils.IsSpeedMode(this.watcher) ? 1 : 0;
+                                    bool flag9 = GameUtils.IsSkipMode(this.watcher);
+                                    if (num20 != 0)
+                                        GameUtils.SetSpeedMode(this.watcher, this.debugPassInfo.baseAddr, false);
+                                    if (flag9)
+                                        GameUtils.SetSkipMode(this.watcher, this.debugPassInfo.baseAddr, false, this._skipModeFrames);
+                                    if (!GameUtils.IsTurnsMode(this.watcher))
+                                    {
+                                        this._isGameQuitted = true;
+                                        if (logManager != null)
+                                            AsyncAppendLog("The match has been cancelled.");
+                                        MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                                        if (profile != null && !profile.IsQuickMode())
+                                        {
+                                            this.UpdatePlayerDataEx(this.debugPassInfo.displayName2, this.debugPassInfo.palnoA1, this.debugPassInfo.displayName4, this.debugPassInfo.palnoB1, 0, 0, 0, 0, 1, this.debugPassInfo.trueTeam1WinCount, this.debugPassInfo.num3, this.debugPassInfo.trueTeam2WinCount, this.debugPassInfo.num4, this.debugPassInfo.drawRounds, 0, 1);
+                                            this.UpdatePlayerDataEx(this.debugPassInfo.displayName3, this.debugPassInfo.palnoA2, this.debugPassInfo.displayName5, this.debugPassInfo.palnoB2, 0, 0, 0, 0, 1, this.debugPassInfo.trueTeam2WinCount, this.debugPassInfo.num4, this.debugPassInfo.trueTeam1WinCount, this.debugPassInfo.num3, this.debugPassInfo.drawRounds, 0, 1);
+                                        }
+                                    }
+                                }
+                            }
+                            if (this.debugPassInfo.playerAddr1 == 0U || this.player1Id != PlayerUtils.GetPlayerId(this.watcher, this.debugPassInfo.playerAddr1))
+                            {
+                                this.debugPassInfo.flag2 = false;
+                                this.player1AnimAddr = 0U;
+                                if (this.debugPassInfo.num9 == 0L)
+                                {
+                                    now = DateTime.Now;
+                                    this.debugPassInfo.num9 = now.Ticks / 10000000L;
+                                }
+                                MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                                if (profile != null && profile.IsAutoMode())
+                                {
+                                    long num20 = (long)(profile.GetMaxRoundState1Time() * 2);
+                                    now = DateTime.Now;
+                                    long num21 = now.Ticks / 10000000L;
+                                    if (num20 > 0L && num21 > this.debugPassInfo.num9 + num20 && !this._isMugenFrozen)
+                                    {
+                                        this._isMugenFrozen = true;
+                                        if (logManager != null)
+                                            AsyncAppendLog("Loading the characters is taking too long.");
+                                    }
+                                }
+                            }
+                            this.debugPassInfo.playerAddr2 = GameUtils.GetP2Addr(this.watcher);
+                            if (this.debugPassInfo.playerAddr2 == 0U || this.player2Id != PlayerUtils.GetPlayerId(this.watcher, this.debugPassInfo.playerAddr2))
+                            {
+                                this.debugPassInfo.flag3 = false;
+                                this.player2AnimAddr = 0U;
+                                if (this.debugPassInfo.num10 == 0L)
+                                {
+                                    now = DateTime.Now;
+                                    this.debugPassInfo.num10 = now.Ticks / 10000000L;
+                                }
+                                MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                                if (profile != null && profile.IsAutoMode())
+                                {
+                                    long num20 = (long)(profile.GetMaxRoundState1Time() * 2);
+                                    now = DateTime.Now;
+                                    long num21 = now.Ticks / 10000000L;
+                                    if (num20 > 0L && num21 > this.debugPassInfo.num10 + num20 && !this._isMugenFrozen)
+                                    {
+                                        this._isMugenFrozen = true;
+                                        if (logManager != null)
+                                            AsyncAppendLog("Loading the characters is taking too long.");
+                                    }
+                                }
+                            }
+                            this.debugPassInfo.playerAddr3 = GameUtils.GetP3Addr(this.watcher);
+                            if (this.debugPassInfo.playerAddr3 == 0U || this.player3Id != PlayerUtils.GetPlayerId(this.watcher, this.debugPassInfo.playerAddr3))
+                            {
+                                this.debugPassInfo.flag4 = false;
+                                this.player3AnimAddr = 0U;
+                            }
+                            this.debugPassInfo.playerAddr4 = GameUtils.GetP4Addr(this.watcher);
+                            if (this.debugPassInfo.playerAddr4 == 0U || this.player4Id != PlayerUtils.GetPlayerId(this.watcher, this.debugPassInfo.playerAddr4))
+                            {
+                                this.debugPassInfo.flag5 = false;
+                                this.player4AnimAddr = 0U;
+                            }
+                        }
+                        if (this.debugPassInfo.playerAddr1 != 0U && !this.debugPassInfo.flag1 && this.GetDisplayName(this.debugPassInfo.playerAddr1, ref this.debugPassInfo.displayName1) > 0)
+                        {
+                            this.debugPassInfo.flag1 = true;
+                            this._invokeWaitTime = 20;
+                            if (this.watcher.GetMugenProcess() != null)
+                            {
+                                this.BeginInvoke((Action)(() => DebugForm.MainObj().InitPlayers(60)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                                this.BeginInvoke((Action)(() => DebugForm.MainObj().InitExplods(50)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                                this.BeginInvoke((Action)(() => DebugForm.MainObj().InitProjs(50)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                                this.BeginInvoke((Action)(() => DebugForm.MainObj().InitTriggerCheck(this.watcher.MugenVersion)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                                if (this._triggerCheckTarget.GetCurrentMode() == TriggerCheckTarget.CheckMode.CHECKMODE_STARTED)
+                                    this.BeginInvoke((Action)(() => this.StartTriggerCheckMode()))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                            }
+                            this.debugPassInfo.trueTeam1WinCount = 0;
+                            this.debugPassInfo.trueTeam2WinCount = 0;
+                            this.debugPassInfo.num3 = 0;
+                            this.debugPassInfo.num4 = 0;
+                            this._timeOverCount1 = 0;
+                            this._timeOverCount2 = 0;
+                            MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                            if (profile == null || !profile.IsAutoMode() || this.numOfGames == 0)
+                                ++this.numOfGames;
+                            if (logManager != null)
+                            {
+                                AsyncAppendLog(" ");
+                                if (profile == null || !profile.IsAutoMode() || !this._isRetryGame)
+                                {
+                                    AsyncAppendLog("//////Match " + (object)this.numOfGames + " //////");
+                                    if (profile != null && profile.IsAutoMode())
+                                        logManager.append(" - (" + (object)profile.GetCharacterCount() + " total)");
+                                }
+                                else
+                                    AsyncAppendLog("//////Match " + (object)this.numOfGames + " (retry)//////");
+                                if (profile != null && profile.IsQuickMode())
+                                    AsyncAppendLog("(No overall results are calculated in Quick Vs. mode)");
+                            }
+                        }
+                        if (this.debugPassInfo.playerAddr1 != 0U && !this.debugPassInfo.flag2)
+                        {
+                            this.debugPassInfo.num9 = 0L;
+                            if (this.GetDisplayName(this.debugPassInfo.playerAddr1, ref this.debugPassInfo.displayName2) > 0)
+                            {
+                                this.debugPassInfo.flag2 = true;
+                                this.player1Id = PlayerUtils.GetPlayerId(this.watcher, this.debugPassInfo.playerAddr1);
+                                this.player1AnimAddr = PlayerUtils.GetAnimListAddr(this.watcher, this.debugPassInfo.baseAddr, this.debugPassInfo.playerAddr1);
+                                this.debugPassInfo.palnoA1 = PlayerUtils.GetPalno(this.watcher, this.debugPassInfo.playerAddr1);
+                                string msg = "P1 side: " + this.debugPassInfo.displayName2;
+                                msg = msg + " (" + this.debugPassInfo.palnoA1.ToString() + "p)";
+                                this.BeginInvoke((Action)(() => DebugForm.MainObj().EnablePlayer(1)));
+                                if (logManager != null)
+                                    AsyncAppendLog(msg);
+                            }
+                            else
+                                this.debugPassInfo.displayName2 = (string)null;
+                        }
+                        if (this.debugPassInfo.playerAddr3 != 0U && !this.debugPassInfo.flag4)
+                        {
+                            if (this.GetDisplayName(this.debugPassInfo.playerAddr3, ref this.debugPassInfo.displayName4) > 0)
+                            {
+                                this.debugPassInfo.flag4 = true;
+                                this.player3Id = PlayerUtils.GetPlayerId(this.watcher, this.debugPassInfo.playerAddr3);
+                                this.player3AnimAddr = PlayerUtils.GetAnimListAddr(this.watcher, this.debugPassInfo.baseAddr, this.debugPassInfo.playerAddr3);
+                                this.debugPassInfo.palnoB1 = PlayerUtils.GetPalno(this.watcher, this.debugPassInfo.playerAddr3);
+                                string msg = "P1 side: " + this.debugPassInfo.displayName4;
+                                msg = msg + " (" + this.debugPassInfo.palnoB1.ToString() + "p)";
+                                this.BeginInvoke((Action)(() => DebugForm.MainObj().EnablePlayer(3)));
+                                if (logManager != null)
+                                    AsyncAppendLog(msg);
+                            }
+                            else
+                                this.debugPassInfo.displayName4 = (string)null;
+                        }
+                        if (this.debugPassInfo.playerAddr2 != 0U && !this.debugPassInfo.flag3)
+                        {
+                            this.debugPassInfo.num10 = 0L;
+                            if (this.GetDisplayName(this.debugPassInfo.playerAddr2, ref this.debugPassInfo.displayName3) > 0)
+                            {
+                                this.debugPassInfo.flag3 = true;
+                                this.player2Id = PlayerUtils.GetPlayerId(this.watcher, this.debugPassInfo.playerAddr2);
+                                this.player2AnimAddr = PlayerUtils.GetAnimListAddr(this.watcher, this.debugPassInfo.baseAddr, this.debugPassInfo.playerAddr2);
+                                this.debugPassInfo.palnoA2 = PlayerUtils.GetPalno(this.watcher, this.debugPassInfo.playerAddr2);
+                                string msg = "P2 side: " + this.debugPassInfo.displayName3;
+                                msg = msg + " (" + this.debugPassInfo.palnoA2.ToString() + "p)";
+                                this.BeginInvoke((Action)(() => DebugForm.MainObj().EnablePlayer(2)));
+                                if (logManager != null)
+                                    AsyncAppendLog(msg);
+                            }
+                            else
+                                this.debugPassInfo.displayName3 = (string)null;
+                        }
+                        if (this.debugPassInfo.playerAddr4 != 0U && !this.debugPassInfo.flag5)
+                        {
+                            if (this.GetDisplayName(this.debugPassInfo.playerAddr4, ref this.debugPassInfo.displayName5) > 0)
+                            {
+                                this.debugPassInfo.flag5 = true;
+                                this.player4Id = PlayerUtils.GetPlayerId(this.watcher, this.debugPassInfo.playerAddr4);
+                                this.player4AnimAddr = PlayerUtils.GetAnimListAddr(this.watcher, this.debugPassInfo.baseAddr, this.debugPassInfo.playerAddr4);
+                                this.debugPassInfo.palnoB2 = PlayerUtils.GetPalno(this.watcher, this.debugPassInfo.playerAddr4);
+                                string msg = "P2 side: " + this.debugPassInfo.displayName5;
+                                msg = msg + " (" + this.debugPassInfo.palnoB2.ToString() + "p)";
+                                this.BeginInvoke((Action)(() => DebugForm.MainObj().EnablePlayer(4)));
+                                if (logManager != null)
+                                    AsyncAppendLog(msg);
+                            }
+                            else
+                                this.debugPassInfo.displayName5 = (string)null;
+                        }
+                        if (this._isMugenActive != GameUtils.IsMugenActive(this.watcher))
+                        {
+                            this._isMugenActive = GameUtils.IsMugenActive(this.watcher);
+                            if (this.watcher.GetMugenProcess() != null)
+                                this.BeginInvoke((Action)(() => this.SetTitleActive(this._isMugenActive)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                        }
+                        bool currentDebugMode = GameUtils.IsDebugMode(this.watcher);
+                        if (this._isDebugModeChanged)
+                        {
+                            this._isDebugModeChanged = false;
+                            if (currentDebugMode != this._isDebugMode)
+                                GameUtils.SetDebugMode(this.watcher, this.debugPassInfo.baseAddr, this._isDebugMode);
+                        }
+                        else if (currentDebugMode != this._isDebugMode)
+                        {
+                            this._isDebugMode = currentDebugMode;
+                            if (this.watcher.GetMugenProcess() != null)
+                                this.BeginInvoke((Action)(() => debugForm.SetDebugModeCheckBox(currentDebugMode, false)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                        }
+                        if (this._isDebugMode)
+                        {
+                            if (this._varInspectTargetPlayer > 0)
+                            {
+                                int playerNoFromId = this.GetPlayerNoFromId(this.debugPassInfo.baseAddr, this._varInspectTargetPlayer);
+                                if (playerNoFromId >= 0)
+                                {
+                                    this._varInspectTargetNo = playerNoFromId + 1;
+                                    this._varInspectTargetPlayer = 0;
+                                }
+                            }
+                            if (this._debugTargetPlayer > 0)
+                            {
+                                int playerNoFromId = this.GetPlayerNoFromId(this.debugPassInfo.baseAddr, this._debugTargetPlayer);
+                                if (playerNoFromId >= 0)
+                                {
+                                    this._debugTargetNo = playerNoFromId + 1;
+                                    this._debugTargetPlayer = 0;
+                                    if (this._debugTargetNo != GameUtils.GetDebugTargetNo(this.watcher))
+                                    {
+                                        GameUtils.SetDebugTargetNo(this.watcher, this.debugPassInfo.baseAddr, this._debugTargetNo);
+                                        if (this.watcher.GetMugenProcess() != null)
+                                            debugForm.SetDebugTargetNo(this._debugTargetNo);
+                                    }
+                                }
+                            }
+                            if (this._isDebugTargetNoChanged)
+                            {
+                                this._isDebugTargetNoChanged = false;
+                                GameUtils.SetDebugTargetNo(this.watcher, this.debugPassInfo.baseAddr, this._debugTargetNo);
+                            }
+                            else if (this._debugTargetNo == 0)
+                            {
+                                this._debugTargetNo = 1;
+                                this._varInspectTargetNo = 1;
+                                GameUtils.SetDebugTargetNo(this.watcher, this.debugPassInfo.baseAddr, this._debugTargetNo);
+                            }
+                            else
+                            {
+                                int debugNo = GameUtils.GetDebugTargetNo(this.watcher);
+                                if (this._debugTargetNo != debugNo)
+                                {
+                                    this._debugTargetNo = debugNo;
+                                    if (this.watcher.GetMugenProcess() != null)
+                                        this.BeginInvoke((Action)(() => debugForm.SetDebugTargetNo(debugNo)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                                }
+                            }
+                        }
+                        if (this._isDebugMode)
+                        {
+                            if (this._debugColor != DebugColor.NONE)
+                            {
+                                this._debugColorChanged = false;
+                                this.SetDebugColor(this.debugPassInfo.baseAddr, this._debugColor);
+                            }
+                            else if (this._debugColorChanged)
+                            {
+                                this._debugColorChanged = false;
+                                this.SetDebugColor(this.debugPassInfo.baseAddr, DebugColor.NONE);
+                            }
+                        }
+                        if (this.watcher.GetDebugProcess() != null && this._triggerCheckTarget != null && (this._triggerCheckTarget.IsDirty() && this.watchAddr == 0U))
+                        {
+                            this.debugPassInfo.triggerValueT.reset();
+                            if (this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_START)
+                            {
+                                if (this._SetBreakPoint(this.debugPassInfo.baseAddr))
+                                {
+                                    this._triggerCheckTarget.SetNextCommand(TriggerCheckTarget.CheckCommand.CHECKCMD_NONE);
+                                    this._triggerCheckTarget.SetCurrentMode(TriggerCheckTarget.CheckMode.CHECKMODE_STARTED);
+                                    this._triggerCheckTarget.ResetDirty();
+                                    this.BeginInvoke((Action)(() => DebugForm.MainObj().EnableTriggerCheckStopButton()))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                                    this.BeginInvoke((Action)(() => this.Activate()));
+                                }
+                            }
+                            else if (this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_STOP)
+                            {
+                                this._triggerCheckTarget.SetNextCommand(TriggerCheckTarget.CheckCommand.CHECKCMD_NONE);
+                                this._triggerCheckTarget.SetCurrentMode(TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED);
+                                this._triggerCheckTarget.ResetDirty();
+                                this.watcher.ClearHardwareBreakpoint();
+                                this.BeginInvoke((Action)(() => DebugForm.MainObj().EnableTriggerCheckStartButton()))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                            }
+                        }
+                        ++this.debugPassInfo.num8;
+                        if (this.debugPassInfo.num8 >= 1)
+                        {
+                            this.debugPassInfo.num8 = 0;
+                            if (this._isDebugMode)
+                            {
+                                // setup values for various debug form views
+                                switch (this._debugListMode)
+                                {
+                                    case MugenWindow.DebugListMode.PLAYER_LIST_MODE:
+                                        this.ListUpPlayers(this.debugPassInfo.baseAddr);
+                                        break;
+                                    case MugenWindow.DebugListMode.EXPLOD_LIST_MODE:
+                                        this.ListUpExplods(this.debugPassInfo.baseAddr);
+                                        break;
+                                    case MugenWindow.DebugListMode.PROJ_LIST_MODE:
+                                        switch (this._projOwner)
+                                        {
+                                            case MugenWindow.ProjOwner.P1:
+                                                this.ListUpProjs(this.player1Id, this.debugPassInfo.playerAddr1);
+                                                break;
+                                            case MugenWindow.ProjOwner.P2:
+                                                this.ListUpProjs(this.player2Id, this.debugPassInfo.playerAddr2);
+                                                break;
+                                            case MugenWindow.ProjOwner.P3:
+                                                this.ListUpProjs(this.player3Id, this.debugPassInfo.playerAddr3);
+                                                break;
+                                            case MugenWindow.ProjOwner.P4:
+                                                this.ListUpProjs(this.player4Id, this.debugPassInfo.playerAddr4);
+                                                break;
+                                        }
+                                        break;
+                                    default:
+                                        this.ListUpPlayers(this.debugPassInfo.baseAddr);
+                                        break;
+                                }
+                                this.UpdateVariables(this.debugPassInfo.baseAddr);
+                            }
+                        }
+                        if (this.debugPassInfo.flag1)
+                        {
+                            // handling for long RoundState=0,4
+                            int roundState1 = GameUtils.GetRoundState(this.watcher);
+                            if (roundState1 == 0)
+                            {
+                                this._invokeWaitTime = 20;
+                                this.debugPassInfo.team1Wins = GameUtils.GetTeam1WinCount(this.watcher);
+                                this.debugPassInfo.team2Wins = GameUtils.GetTeam2WinCount(this.watcher);
+                                this.debugPassInfo.drawRounds = GameUtils.GetDrawGameCount(this.watcher);
+                                this.debugPassInfo.gameTime = (uint)GameUtils.GetGameTime(this.watcher);
+                                int speedMode = GameUtils.IsSpeedMode(this.watcher) ? 1 : 0;
+                                bool isSkipMode = GameUtils.IsSkipMode(this.watcher);
+                                int prevSpeedMode = this._isSpeedMode ? 1 : 0;
+                                if (speedMode != prevSpeedMode)
+                                    GameUtils.SetSpeedMode(this.watcher, this.debugPassInfo.baseAddr, this._isSpeedMode);
+                                if (isSkipMode != this._isSkipMode)
+                                    GameUtils.SetSkipMode(this.watcher, this.debugPassInfo.baseAddr, this._isSkipMode, this._skipModeFrames);
+                                if (this.debugPassInfo.num11 == 0L)
+                                {
+                                    now = DateTime.Now;
+                                    this.debugPassInfo.num11 = now.Ticks / 10000000L;
+                                }
+                                MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                                if (profile != null && profile.IsAutoMode())
+                                {
+                                    long maxRoundState1Time = (long)profile.GetMaxRoundState1Time();
+                                    now = DateTime.Now;
+                                    long num22 = now.Ticks / 10000000L;
+                                    if (maxRoundState1Time > 0L && num22 > this.debugPassInfo.num11 + maxRoundState1Time && !this._isMugenFrozen)
+                                    {
+                                        this._isMugenFrozen = true;
+                                        if (logManager != null)
+                                            AsyncAppendLog("Startup is taking too long.");
+                                    }
+                                }
+                            }
+                            else if (this.debugPassInfo.flag6 || roundState1 == 4)
+                            {
+                                if (!GameUtils.IsPaused(this.watcher) && !this._isDebugBreakMode)
+                                {
+                                    ++this.debugPassInfo.num6;
+                                    if (this.debugPassInfo.num6 == this.debugPassInfo.num5)
+                                    {
+                                        if ((int)GameUtils.GetGameTime(this.watcher) - (int)this.debugPassInfo.gameTime == 0)
+                                        {
+                                            this._isMugenFrozen = true;
+                                            this._invokeWaitTime = 10;
+                                        }
+                                        this.debugPassInfo.num6 = 0;
+                                        this.debugPassInfo.gameTime = (uint)GameUtils.GetGameTime(this.watcher);
+                                    }
+                                }
+                                else
+                                    this.debugPassInfo.num6 = 0;
+                                if (this.watcher.GetMugenProcess() != null)
+                                    this.BeginInvoke((Action)(() => debugForm.SetPauseCheckBox(GameUtils.IsPaused(this.watcher))))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                                if (GameUtils.IsPaused(this.watcher) && this._isStepMode)
+                                {
+                                    now = DateTime.Now;
+                                    this._stepModeCounter = now.Ticks / 10000L;
+                                    if (this._stepModeCounter - this._stepModeLastCounter > this._stepModeInterval)
+                                    {
+                                        this._stepModeLastCounter = this._stepModeCounter;
+                                        this.InjectStepCommand();
+                                    }
+                                }
+                                bool currentSpeedMode = GameUtils.IsSpeedMode(this.watcher);
+                                bool flag9 = GameUtils.IsSkipMode(this.watcher);
+                                int skipFrames = GameUtils.GetSkipFrames(this.watcher);
+                                if (roundState1 < 3)
+                                {
+                                    if (this._isSpeedModeChanged)
+                                    {
+                                        this._isSpeedModeChanged = false;
+                                        if (currentSpeedMode != this._isSpeedMode)
+                                        {
+                                            GameUtils.SetSpeedMode(this.watcher, this.debugPassInfo.baseAddr, this._isSpeedMode);
+                                            this._wasSpeedModeChanged = true;
+                                        }
+                                    }
+                                    else if (currentSpeedMode != this._isSpeedMode)
+                                    {
+                                        if (this._wasSpeedModeChanged)
+                                        {
+                                            GameUtils.SetSpeedMode(this.watcher, this.debugPassInfo.baseAddr, this._isSpeedMode);
+                                            this._wasSpeedModeChanged = false;
+                                        }
+                                        else
+                                        {
+                                            this._isSpeedMode = currentSpeedMode;
+                                            if (this.watcher.GetMugenProcess() != null)
+                                                this.BeginInvoke((Action)(() => debugForm.SetSpeedModeCheckBox(currentSpeedMode, false)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+                                        }
+                                    }
+                                    if (flag9 != this._isSkipMode || flag9 && skipFrames != this._skipModeFrames)
+                                        GameUtils.SetSkipMode(this.watcher, this.debugPassInfo.baseAddr, this._isSkipMode, this._skipModeFrames);
+                                }
+                            }
+                            // handler for checking if Mugen crashed or froze during RoundState=[1,3]
+                            // as well as data read/load/update
+                            int roundState2 = GameUtils.GetRoundState(this.watcher);
+                            if (roundState2 >= 1 && roundState2 <= 3 && (this.debugPassInfo.flag2 & this.debugPassInfo.flag3 && !this._isMugenCrashed))
+                            {
+                                if (!this.debugPassInfo.flag6)
+                                {
+                                    this.debugPassInfo.flag6 = true;
+                                    this.debugPassInfo.num11 = 0L;
+                                    this.debugPassInfo.num12 = 0L;
+                                    this.debugPassInfo.num13 = 0L;
+                                    this.debugPassInfo.num14 = 0L;
+                                    this.debugPassInfo.num15 = 0L;
+                                    this.debugPassInfo.num16 = 0L;
+                                    this.debugPassInfo.num18 = GameUtils.GetRoundNoOfMatch(this.watcher);
+                                    this.debugPassInfo.team1Wins = GameUtils.GetTeam1WinCount(this.watcher);
+                                    this.debugPassInfo.team2Wins = GameUtils.GetTeam2WinCount(this.watcher);
+                                    this.debugPassInfo.drawRounds = GameUtils.GetDrawGameCount(this.watcher);
+                                    this._isGameQuitted = false;
+                                    if (this._triggerCheckTarget != null)
+                                        this._triggerCheckTarget.SetDirty();
+                                    MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                                    if (profile != null && profile.IsAutoMode())
+                                    {
+                                        this.debugPassInfo.num18 = !profile.IsStrictRoundMode() ? GameUtils.GetRoundNoOfMatch(this.watcher) : GameUtils.GetRoundNoOfMatch(this.watcher) - 1;
+                                        if (!GameUtils.IsDebugMode(this.watcher))
+                                            GameUtils.EnableDebugKey(this.watcher, this.debugPassInfo.baseAddr, true);
+                                        this.BeginInvoke((Action)(() => DebugForm.MainObj().SetSpeedModeCheckBox(profile.IsSpeedMode(), true)));
+                                        this.BeginInvoke((Action)(() => DebugForm.MainObj().SetSkipModeCheckBox(profile.IsSkipMode())));
+                                        this.BeginInvoke((Action)(() => DebugForm.MainObj().SetDebugModeCheckBox(profile.IsDebugMode(), true)));
+                                        if (profile.IsStrictRoundMode())
+                                        {
+                                            int team1WinCount = GameUtils.GetTeam1WinCount(this.watcher);
+                                            int team2WinCount = GameUtils.GetTeam2WinCount(this.watcher);
+                                            int num20 = this.debugPassInfo.num18;
+                                            if (team1WinCount >= num20 || team2WinCount >= this.debugPassInfo.num18)
+                                            {
+                                                this.debugPassInfo.flag6 = false;
+                                                if (this.watcher.CheckMugenProcessActive())
+                                                {
+                                                    this.KillGracefully();
+                                                    return true;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                                    if (profile != null && profile.IsAutoMode() && GameUtils.GetRoundNo(this.watcher) > this.debugPassInfo.trueTeam1WinCount + this.debugPassInfo.trueTeam2WinCount + this.debugPassInfo.drawRounds + 1)
+                                    {
+                                        this.debugPassInfo.flag7 = false;
+                                        this.debugPassInfo.flag6 = false;
+                                        this.debugPassInfo.flag8 = true;
+                                        int num20 = GameUtils.GetDrawGameCount(this.watcher) + 1;
+                                        GameUtils.SetDrawGameCount(this.watcher, num20);
+                                        if (logManager != null)
+                                        {
+                                            AsyncAppendLog("Quit possibly, this game was fixed in some manner.");
+                                            AsyncAppendLog("⇒ Draw.");
+                                        }
+                                    }
+                                }
+                            }
+                            if (roundState2 == 1)
+                            {
+                                this._invokeWaitTime = 20;
+                                this.debugPassInfo.num11 = 0L;
+                                this.debugPassInfo.num13 = 0L;
+                                this.debugPassInfo.num14 = 0L;
+                                this.debugPassInfo.num15 = 0L;
+                                this.debugPassInfo.num16 = 0L;
+                                if (this.debugPassInfo.num12 == 0L)
+                                {
+                                    now = DateTime.Now;
+                                    this.debugPassInfo.num12 = now.Ticks / 10000000L;
+                                }
+                                MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                                if (profile != null && profile.IsAutoMode())
+                                {
+                                    long maxRoundState1Time = (long)profile.GetMaxRoundState1Time();
+                                    now = DateTime.Now;
+                                    long num20 = now.Ticks / 10000000L;
+                                    if (maxRoundState1Time > 0L && num20 > this.debugPassInfo.num12 + maxRoundState1Time)
+                                    {
+                                        if (logManager != null)
+                                            AsyncAppendLog("The introductions phase has been skipped as it was too long.");
+                                        GameUtils.SetRoundState(this.watcher, 2);
+                                        if (this.debugPassInfo.playerAddr1 != 0U)
+                                            PlayerUtils.SetCtrl(this.watcher, this.debugPassInfo.playerAddr1, true);
+                                        if (this.debugPassInfo.playerAddr2 != 0U)
+                                            PlayerUtils.SetCtrl(this.watcher, this.debugPassInfo.playerAddr2, true);
+                                        if (this.debugPassInfo.playerAddr3 != 0U)
+                                            PlayerUtils.SetCtrl(this.watcher, this.debugPassInfo.playerAddr3, true);
+                                        if (this.debugPassInfo.playerAddr4 != 0U)
+                                            PlayerUtils.SetCtrl(this.watcher, this.debugPassInfo.playerAddr4, true);
+                                    }
+                                }
+                            }
+                            if (roundState2 == 2)
+                            {
+                                this._invokeWaitTime = 20;
+                                this.debugPassInfo.num11 = 0L;
+                                this.debugPassInfo.num12 = 0L;
+                                this.debugPassInfo.num14 = 0L;
+                                this.debugPassInfo.num15 = 0L;
+                                this.debugPassInfo.num16 = 0L;
+                                if (this.debugPassInfo.num13 == 0L)
+                                {
+                                    now = DateTime.Now;
+                                    this.debugPassInfo.num13 = now.Ticks / 10000000L;
+                                    if (logManager != null)
+                                        AsyncAppendLog("Round " + (object)GameUtils.GetRoundNo(this.watcher) + " start!");
+                                }
+                                MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                                if (profile != null && profile.IsAutoMode())
+                                {
+                                    if (GameUtils.GetRoundTime(this.watcher) <= 30 && GameUtils.IsSpeedMode(this.watcher))
+                                        GameUtils.SetSpeedMode(this.watcher, this.debugPassInfo.baseAddr, false);
+                                    long maxRoundTime = (long)profile.GetMaxRoundTime();
+                                    now = DateTime.Now;
+                                    long num20 = now.Ticks / 10000000L;
+                                    if (maxRoundTime > 0L && num20 > this.debugPassInfo.num13 + maxRoundTime)
+                                    {
+                                        this.debugPassInfo.flag7 = false;
+                                        this.debugPassInfo.flag6 = false;
+                                        this.debugPassInfo.flag8 = true;
+                                        int num21 = GameUtils.GetDrawGameCount(this.watcher) + 1;
+                                        GameUtils.SetDrawGameCount(this.watcher, num21);
+                                        this.watcher.SetInt32Data(this.debugPassInfo.baseAddr, this.watcher.MugenDatabase.ROUND_STATE_BASE_OFFSET, 3);
+                                        int roundNo = GameUtils.GetRoundNo(this.watcher);
+                                        GameUtils.SetRoundNo(this.watcher, roundNo + 1);
+                                        this.InjectF4();
+                                        if (logManager != null)
+                                        {
+                                            AsyncAppendLog(profile.GetMaxRoundTimeRawData().ToString() + "Minutes have elapsed.");
+                                            AsyncAppendLog("⇒ Draw.");
+                                        }
+                                    }
+                                }
+                            }
+                            if (roundState2 == 3)
+                            {
+                                this._invokeWaitTime = 10;
+                                this.debugPassInfo.num11 = 0L;
+                                this.debugPassInfo.num12 = 0L;
+                                this.debugPassInfo.num13 = 0L;
+                                this.debugPassInfo.num15 = 0L;
+                                this.debugPassInfo.num16 = 0L;
+                                if (this.debugPassInfo.num14 == 0L)
+                                {
+                                    now = DateTime.Now;
+                                    this.debugPassInfo.num14 = now.Ticks / 10000000L;
+                                }
+                                MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                                if (profile != null && profile.IsAutoMode())
+                                {
+                                    long maxRoundState4Time = (long)profile.GetMaxRoundState4Time();
+                                    now = DateTime.Now;
+                                    long num20 = now.Ticks / 10000000L;
+                                    if (maxRoundState4Time > 0L && num20 > this.debugPassInfo.num14 + maxRoundState4Time)
+                                    {
+                                        if (logManager != null)
+                                            AsyncAppendLog("This round was suspended in order to begin the next one.");
+                                        this.debugPassInfo.flag7 = false;
+                                        this.debugPassInfo.flag6 = false;
+                                        this.debugPassInfo.flag8 = true;
+                                        int num21 = GameUtils.GetDrawGameCount(this.watcher) + 1;
+                                        GameUtils.SetDrawGameCount(this.watcher, num21);
+                                        int roundNo = GameUtils.GetRoundNo(this.watcher);
+                                        GameUtils.SetRoundNo(this.watcher, roundNo + 1);
+                                        this.InjectF4();
+                                        if (logManager != null)
+                                            AsyncAppendLog("⇒ Draw.");
+                                    }
+                                }
+                            }
+                            if (roundState2 == 4)
+                            {
+                                this._invokeWaitTime = 10;
+                                this.debugPassInfo.num11 = 0L;
+                                this.debugPassInfo.num12 = 0L;
+                                this.debugPassInfo.num13 = 0L;
+                                this.debugPassInfo.num14 = 0L;
+                                this.debugPassInfo.num16 = 0L;
+                                if (this.debugPassInfo.num15 == 0L)
+                                {
+                                    now = DateTime.Now;
+                                    this.debugPassInfo.num15 = now.Ticks / 10000000L;
+                                }
+                                MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                                if (profile != null && profile.IsAutoMode())
+                                {
+                                    long maxRoundState4Time = (long)profile.GetMaxRoundState4Time();
+                                    now = DateTime.Now;
+                                    long num20 = now.Ticks / 10000000L;
+                                    if (maxRoundState4Time > 0L && num20 > this.debugPassInfo.num15 + maxRoundState4Time)
+                                    {
+                                        GameUtils.GetRoundTime(this.watcher);
+                                        if (logManager != null)
+                                            AsyncAppendLog("This round was suspended in order to begin the next one.");
+                                        if (!this.debugPassInfo.flag6)
+                                        {
+                                            int roundNo = GameUtils.GetRoundNo(this.watcher);
+                                            GameUtils.SetRoundNo(this.watcher, roundNo + 1);
+                                            this.InjectF4();
+                                        }
+                                        else
+                                        {
+                                            this.debugPassInfo.flag7 = false;
+                                            this.debugPassInfo.flag6 = false;
+                                            this.debugPassInfo.flag8 = true;
+                                            int num21 = GameUtils.GetDrawGameCount(this.watcher) + 1;
+                                            GameUtils.SetDrawGameCount(this.watcher, num21);
+                                            int roundNo = GameUtils.GetRoundNo(this.watcher);
+                                            GameUtils.SetRoundNo(this.watcher, roundNo + 1);
+                                            this.InjectF4();
+                                            if (logManager != null)
+                                                AsyncAppendLog("⇒ Draw.");
+                                        }
+                                    }
+                                }
+                            }
+                            // win determination segment
+                            if (roundState2 >= 2 & this.debugPassInfo.flag6 | this.debugPassInfo.flag8)
+                            {
+                                if (roundState2 >= 3)
+                                {
+                                    int num20 = GameUtils.IsSpeedMode(this.watcher) ? 1 : 0;
+                                    bool flag9 = GameUtils.IsSkipMode(this.watcher);
+                                    if (num20 != 0)
+                                        GameUtils.SetSpeedMode(this.watcher, this.debugPassInfo.baseAddr, false);
+                                    if (flag9)
+                                        GameUtils.SetSkipMode(this.watcher, this.debugPassInfo.baseAddr, false, this._skipModeFrames);
+                                }
+                                this.debugPassInfo.num11 = 0L;
+                                this.debugPassInfo.num12 = 0L;
+                                int team1WinCount = GameUtils.GetTeam1WinCount(this.watcher);
+                                int team2WinCount = GameUtils.GetTeam2WinCount(this.watcher);
+                                int newDrawGameCount = GameUtils.GetDrawGameCount(this.watcher);
+                                if (!this.debugPassInfo.flag8)
+                                {
+                                    if (team1WinCount > this.debugPassInfo.team1Wins && team2WinCount == this.debugPassInfo.team2Wins)
+                                    {
+                                        this.debugPassInfo.flag7 = true;
+                                        this.debugPassInfo.flag6 = false;
+                                        ++this.debugPassInfo.trueTeam1WinCount;
+                                        if (GameUtils.IsTeam1WinKO(this.watcher))
+                                            ++this.debugPassInfo.num3;
+                                        if (logManager != null)
+                                        {
+                                            if (GameUtils.IsTeam1WinKO(this.watcher))
+                                                AsyncAppendLog("⇒ Player 1 side wins by K.O.");
+                                            else
+                                                AsyncAppendLog("⇒  Player 1 side wins by judgement.");
+                                        }
+                                    }
+                                    else if (team2WinCount > this.debugPassInfo.team2Wins && team1WinCount == this.debugPassInfo.team1Wins)
+                                    {
+                                        this.debugPassInfo.flag7 = true;
+                                        this.debugPassInfo.flag6 = false;
+                                        ++this.debugPassInfo.trueTeam2WinCount;
+                                        if (GameUtils.IsTeam2WinKO(this.watcher))
+                                            ++this.debugPassInfo.num4;
+                                        if (logManager != null)
+                                        {
+                                            if (GameUtils.IsTeam2WinKO(this.watcher))
+                                                AsyncAppendLog("⇒ Player 2 side wins by K.O.");
+                                            else
+                                                AsyncAppendLog("⇒ Player 2 side wins by judgement.");
+                                        }
+                                    }
+                                    else if (newDrawGameCount > this.debugPassInfo.drawRounds)
+                                    {
+                                        this.debugPassInfo.flag7 = true;
+                                        this.debugPassInfo.flag6 = false;
+                                        if (logManager != null && this.watcher.GetMugenProcess() != null)
+                                            AsyncAppendLog("⇒ Draw.");
+                                    }
+                                }
+                                if (!this.debugPassInfo.flag6 | this.debugPassInfo.flag8)
+                                {
+                                    this.debugPassInfo.flag8 = false;
+                                    MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                                    if (!GameUtils.IsTurnsMode(this.watcher) || profile != null && profile.IsAutoMode() && profile.IsStrictRoundMode())
+                                    {
+                                        if (team1WinCount >= this.debugPassInfo.num18 && team2WinCount < this.debugPassInfo.num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && this.debugPassInfo.trueTeam1WinCount + newDrawGameCount >= this.debugPassInfo.num18) && this.debugPassInfo.trueTeam2WinCount + newDrawGameCount < this.debugPassInfo.num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && this.debugPassInfo.trueTeam1WinCount > this.debugPassInfo.trueTeam2WinCount) && this.debugPassInfo.trueTeam1WinCount + this.debugPassInfo.trueTeam2WinCount + newDrawGameCount >= this.debugPassInfo.num18)
+                                        {
+                                            this.debugPassInfo.flag7 = false;
+                                            this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
+                                            if (this.watcher.GetMugenProcess() != null)
+                                                AsyncAppendLog(">>> " + (object)this.debugPassInfo.trueTeam1WinCount + "Wins" + (object)this.debugPassInfo.trueTeam2WinCount + "Losses" + (object)newDrawGameCount + "Draws. Resulting in victory for the player 1 side.");
+                                            if (profile != null && !profile.IsQuickMode())
+                                            {
+                                                this.UpdatePlayerDataEx(this.debugPassInfo.displayName2, this.debugPassInfo.palnoA1, this.debugPassInfo.displayName4, this.debugPassInfo.palnoB1, 1, 0, 0, 0, 0, this.debugPassInfo.trueTeam1WinCount, this.debugPassInfo.num3, this.debugPassInfo.trueTeam2WinCount, this.debugPassInfo.num4, newDrawGameCount, 0, 0);
+                                                this.UpdatePlayerDataEx(this.debugPassInfo.displayName3, this.debugPassInfo.palnoA2, this.debugPassInfo.displayName5, this.debugPassInfo.palnoB2, 0, 1, 0, 0, 0, this.debugPassInfo.trueTeam2WinCount, this.debugPassInfo.num4, this.debugPassInfo.trueTeam1WinCount, this.debugPassInfo.num3, newDrawGameCount, 0, 0);
+                                            }
+                                            if (profile != null && profile.IsAutoMode())
+                                            {
+                                                profile.IncrementTempGameCount();
+                                                if (this.debugPassInfo.num16 == 0L)
+                                                {
+                                                    now = DateTime.Now;
+                                                    this.debugPassInfo.num16 = now.Ticks / 10000000L;
+                                                }
+                                                if (team1WinCount < this.debugPassInfo.num18)
+                                                    GameUtils.SetTeam1WinCount(this.watcher, 100);
+                                                if (this.watcher.GetMugenProcess() != null && !profile.WasLastFight())
+                                                    AsyncAppendLog("Starting next match");
+                                            }
+                                        }
+                                        else if (team1WinCount < this.debugPassInfo.num18 && team2WinCount >= this.debugPassInfo.num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && this.debugPassInfo.trueTeam1WinCount + newDrawGameCount < this.debugPassInfo.num18) && this.debugPassInfo.trueTeam2WinCount + newDrawGameCount >= this.debugPassInfo.num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && this.debugPassInfo.trueTeam1WinCount < this.debugPassInfo.trueTeam2WinCount) && this.debugPassInfo.trueTeam1WinCount + this.debugPassInfo.trueTeam2WinCount + newDrawGameCount >= this.debugPassInfo.num18)
+                                        {
+                                            this.debugPassInfo.flag7 = false;
+                                            this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
+                                            if (this.watcher.GetMugenProcess() != null && !profile.WasLastFight())
+                                                AsyncAppendLog(">>> " + (object)this.debugPassInfo.trueTeam2WinCount + "Wins" + (object)this.debugPassInfo.trueTeam1WinCount + "Losses" + (object)newDrawGameCount + "Draws. Resulting in victory for the player 2 side.");
+                                            if (profile != null && !profile.IsQuickMode())
+                                            {
+                                                this.UpdatePlayerDataEx(this.debugPassInfo.displayName2, this.debugPassInfo.palnoA1, this.debugPassInfo.displayName4, this.debugPassInfo.palnoB1, 0, 1, 0, 0, 0, this.debugPassInfo.trueTeam1WinCount, this.debugPassInfo.num3, this.debugPassInfo.trueTeam2WinCount, this.debugPassInfo.num4, newDrawGameCount, 0, 0);
+                                                this.UpdatePlayerDataEx(this.debugPassInfo.displayName3, this.debugPassInfo.palnoA2, this.debugPassInfo.displayName5, this.debugPassInfo.palnoB2, 1, 0, 0, 0, 0, this.debugPassInfo.trueTeam2WinCount, this.debugPassInfo.num4, this.debugPassInfo.trueTeam1WinCount, this.debugPassInfo.num3, newDrawGameCount, 0, 0);
+                                            }
+                                            if (profile != null && profile.IsAutoMode())
+                                            {
+                                                profile.IncrementTempGameCount();
+                                                if (this.debugPassInfo.num16 == 0L)
+                                                {
+                                                    now = DateTime.Now;
+                                                    this.debugPassInfo.num16 = now.Ticks / 10000000L;
+                                                }
+                                                if (team2WinCount < this.debugPassInfo.num18)
+                                                    GameUtils.SetTeam2WinCount(this.watcher, 100);
+                                                if (this.watcher.GetMugenProcess() != null && !profile.WasLastFight())
+                                                    AsyncAppendLog("Starting next match");
+                                            }
+                                        }
+                                        else if (team1WinCount >= this.debugPassInfo.num18 && team2WinCount >= this.debugPassInfo.num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && this.debugPassInfo.trueTeam1WinCount + newDrawGameCount >= this.debugPassInfo.num18) && this.debugPassInfo.trueTeam2WinCount + newDrawGameCount >= this.debugPassInfo.num18 || profile != null && profile.IsAutoMode() && (profile.IsStrictRoundMode() && this.debugPassInfo.trueTeam1WinCount == this.debugPassInfo.trueTeam2WinCount) && this.debugPassInfo.trueTeam1WinCount + this.debugPassInfo.trueTeam2WinCount + newDrawGameCount >= this.debugPassInfo.num18)
+                                        {
+                                            this.debugPassInfo.flag7 = false;
+                                            this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
+                                            if (this.watcher.GetMugenProcess() != null)
+                                                AsyncAppendLog(">>> " + (object)this.debugPassInfo.trueTeam1WinCount + "Wins" + (object)this.debugPassInfo.trueTeam2WinCount + "Losses" + (object)newDrawGameCount + "Draws. Resulting in an overall draw.");
+                                            if (profile != null && !profile.IsQuickMode())
+                                            {
+                                                this.UpdatePlayerDataEx(this.debugPassInfo.displayName2, this.debugPassInfo.palnoA1, this.debugPassInfo.displayName4, this.debugPassInfo.palnoB1, 0, 0, 1, 0, 0, this.debugPassInfo.trueTeam1WinCount, this.debugPassInfo.num3, this.debugPassInfo.trueTeam2WinCount, this.debugPassInfo.num4, newDrawGameCount, 0, 0);
+                                                this.UpdatePlayerDataEx(this.debugPassInfo.displayName3, this.debugPassInfo.palnoA2, this.debugPassInfo.displayName5, this.debugPassInfo.palnoB2, 0, 0, 1, 0, 0, this.debugPassInfo.trueTeam2WinCount, this.debugPassInfo.num4, this.debugPassInfo.trueTeam1WinCount, this.debugPassInfo.num3, newDrawGameCount, 0, 0);
+                                            }
+                                            if (profile != null && profile.IsAutoMode())
+                                            {
+                                                profile.IncrementTempGameCount();
+                                                if (this.debugPassInfo.num16 == 0L)
+                                                {
+                                                    now = DateTime.Now;
+                                                    this.debugPassInfo.num16 = now.Ticks / 10000000L;
+                                                }
+                                                if (team1WinCount < this.debugPassInfo.num18 || team2WinCount < this.debugPassInfo.num18)
+                                                {
+                                                    GameUtils.SetTeam1WinCount(this.watcher, 100);
+                                                    GameUtils.SetTeam2WinCount(this.watcher, 100);
+                                                }
+                                                if (this.watcher.GetMugenProcess() != null && !profile.WasLastFight())
+                                                    AsyncAppendLog("Starting next match");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else
+                return false;
+            return true;
+        }
+
+        public void Cleanup()
+        {
+            LogManager logManager = LogManager.MainObj();
+            DebugForm debugForm = DebugForm.MainObj();
+            if (this.debugPassInfo.flag6 | this.debugPassInfo.flag7)
+            {
+                this.BeginInvoke((Action)(() => DebugForm.MainObj().FinalizeTriggerCheck(this.watcher.MugenVersion)));
+                this._invokeWaitTime = 20;
+                MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
+                if (this.debugPassInfo.baseAddr != 0U && !GameUtils.IsTurnsMode(this.watcher) || profile != null && profile.IsAutoMode())
+                {
+                    if (this._isMugenFrozen)
+                    {
+                        this._isGameQuitted = true;
+                        if (logManager != null)
+                            AsyncAppendLog("Process quit unexpectedly");
+                        if (profile != null && !profile.IsQuickMode())
+                        {
+                            this.UpdatePlayerDataEx(this.debugPassInfo.displayName2, this.debugPassInfo.palnoA1, this.debugPassInfo.displayName4, this.debugPassInfo.palnoB1, 0, 0, 0, 1, 0, this.debugPassInfo.trueTeam1WinCount, this.debugPassInfo.num3, this.debugPassInfo.trueTeam2WinCount, this.debugPassInfo.num4, this.debugPassInfo.drawRounds, 1, 0);
+                            this.UpdatePlayerDataEx(this.debugPassInfo.displayName3, this.debugPassInfo.palnoA2, this.debugPassInfo.displayName5, this.debugPassInfo.palnoB2, 0, 0, 0, 1, 0, this.debugPassInfo.trueTeam2WinCount, this.debugPassInfo.num4, this.debugPassInfo.trueTeam1WinCount, this.debugPassInfo.num3, this.debugPassInfo.drawRounds, 1, 0);
+                        }
+                    }
+                    else
+                    {
+                        this._isGameQuitted = true;
+                        if (logManager != null)
+                            AsyncAppendLog("The match was cancelled");
+                        if (profile != null && !profile.IsQuickMode())
+                        {
+                            this.UpdatePlayerDataEx(this.debugPassInfo.displayName2, this.debugPassInfo.palnoA1, this.debugPassInfo.displayName4, this.debugPassInfo.palnoB1, 0, 0, 0, 0, 1, this.debugPassInfo.trueTeam1WinCount, this.debugPassInfo.num3, this.debugPassInfo.trueTeam2WinCount, this.debugPassInfo.num4, this.debugPassInfo.drawRounds, 0, 1);
+                            this.UpdatePlayerDataEx(this.debugPassInfo.displayName3, this.debugPassInfo.palnoA2, this.debugPassInfo.displayName5, this.debugPassInfo.palnoB2, 0, 0, 0, 0, 1, this.debugPassInfo.trueTeam2WinCount, this.debugPassInfo.num4, this.debugPassInfo.trueTeam1WinCount, this.debugPassInfo.num3, this.debugPassInfo.drawRounds, 0, 1);
+                        }
+                    }
+                    if (profile != null && profile.IsAutoMode() && this.watcher.CheckMugenProcessActive())
+                        this.watcher.GetMugenProcess().Kill();
+                }
+            }
+        }
+
+        public void Uninitialize()
+        {
+            this.BeginInvoke((Action)(() => DebugForm.MainObj().PostFinalizeTriggerCheck(this.watcher.MugenVersion)));
+        }
+
         [StructLayout(LayoutKind.Sequential, Pack = 4)]
         private struct RECT
         {
@@ -4127,171 +3952,6 @@ namespace SwissArmyKnifeForMugen
         }
 
         private delegate bool EnumChildProc(IntPtr hWnd, int lParam);
-
-        // reference for setting flags in child thread
-        [Flags]
-        public enum ThreadAccessFlags
-        {
-            TERMINATE = 1,
-            SUSPEND_RESUME = 2,
-            GET_CONTEXT = 8,
-            SET_CONTEXT = 16, // 0x00000010
-            SET_INFORMATION = 32, // 0x00000020
-            QUERY_INFORMATION = 64, // 0x00000040
-            SET_THREAD_TOKEN = 128, // 0x00000080
-            IMPERSONATE = 256, // 0x00000100
-            DIRECT_IMPERSONATION = 512, // 0x00000200
-        }
-
-        // reference for context flags for debug registers???
-        public enum CONTEXT_FLAGS : uint
-        {
-            CONTEXT_i386 = 65536, // 0x00010000
-            CONTEXT_i486 = 65536, // 0x00010000
-            CONTEXT_CONTROL = 65537, // 0x00010001
-            CONTEXT_INTEGER = 65538, // 0x00010002
-            CONTEXT_SEGMENTS = 65540, // 0x00010004
-            CONTEXT_FULL = 65543, // 0x00010007
-            CONTEXT_FLOATING_POINT = 65544, // 0x00010008
-            CONTEXT_DEBUG_REGISTERS = 65552, // 0x00010010
-            CONTEXT_EXTENDED_REGISTERS = 65568, // 0x00010020
-            CONTEXT_ALL = 65599, // 0x0001003F
-        }
-
-        // seems windows internal, but not sure
-        public struct FLOATING_SAVE_AREA
-        {
-            public uint ControlWord;
-            public uint StatusWord;
-            public uint TagWord;
-            public uint ErrorOffset;
-            public uint ErrorSelector;
-            public uint DataOffset;
-            public uint DataSelector;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 80)]
-            public byte[] RegisterArea;
-            public uint Cr0NpxState;
-        }
-
-        // context of a process' registers
-        public struct CONTEXT
-        {
-            public uint ContextFlags;
-            public uint Dr0;
-            public uint Dr1;
-            public uint Dr2;
-            public uint Dr3;
-            public uint Dr6;
-            public uint Dr7;
-            public MugenWindow.FLOATING_SAVE_AREA FloatSave;
-            public uint SegGs;
-            public uint SegFs;
-            public uint SegEs;
-            public uint SegDs;
-            public uint Edi;
-            public uint Esi;
-            public uint Ebx;
-            public uint Edx;
-            public uint Ecx;
-            public uint Eax;
-            public uint Ebp;
-            public uint Eip;
-            public uint SegCs;
-            public uint EFlags;
-            public uint Esp;
-            public uint SegSs;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 512)]
-            public byte[] ExtendedRegisters;
-        }
-
-        private struct BYTES
-        {
-            public byte BaseMid;
-            public byte Flags1;
-            public byte Flags2;
-            public byte BaseHi;
-        }
-
-        private struct BITS
-        {
-            private int Value;
-
-            public int BaseMid
-            {
-                get => this.Value & (int)byte.MaxValue;
-                set => this.Value = this.Value & -256 | value & (int)byte.MaxValue;
-            }
-
-            public int Type
-            {
-                get => (this.Value & 7936) >> 8;
-                set => this.Value = this.Value & -7937 | (value & 31) << 8;
-            }
-
-            public int Dpl
-            {
-                get => (this.Value & 24576) >> 13;
-                set => this.Value = this.Value & -24577 | (value & 3) << 13;
-            }
-
-            public int Pres
-            {
-                get => (this.Value & 16384) >> 15;
-                set => this.Value = this.Value & -16385 | (value & 1) << 15;
-            }
-
-            public int LimitHi
-            {
-                get => (this.Value & 983040) >> 16;
-                set => this.Value = this.Value & -983041 | (value & 15) << 16;
-            }
-
-            public int Sys
-            {
-                get => (this.Value & 1048576) >> 20;
-                set => this.Value = this.Value & -1048577 | (value & 1) << 20;
-            }
-
-            public int Reserved_0
-            {
-                get => (this.Value & 2097152) >> 21;
-                set => this.Value = this.Value & -2097153 | (value & 1) << 21;
-            }
-
-            public int Default_Big
-            {
-                get => (this.Value & 4194304) >> 22;
-                set => this.Value = this.Value & -4194305 | (value & 1) << 22;
-            }
-
-            public int Granularity
-            {
-                get => (this.Value & 8388608) >> 23;
-                set => this.Value = this.Value & -8388609 | (value & 1) << 23;
-            }
-
-            public int BaseHi
-            {
-                get => (this.Value & -16777216) >> 24;
-                set => this.Value = this.Value & 16777215 | (value & (int)byte.MaxValue) << 24;
-            }
-        }
-
-        [StructLayout(LayoutKind.Explicit)]
-        private struct HIGHWORD
-        {
-            [FieldOffset(0)]
-            public MugenWindow.BYTES Bytes;
-            [FieldOffset(0)]
-            public MugenWindow.BITS Bits;
-        }
-
-        private struct LDT_ENTRY
-        {
-            public ushort LimitLow;
-            public ushort BaseLow;
-            public MugenWindow.HIGHWORD HighWord;
-        }
 
         private delegate void appendLogDelegate();
 
