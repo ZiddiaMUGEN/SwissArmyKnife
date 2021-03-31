@@ -105,8 +105,6 @@ namespace SwissArmyKnifeForMugen
         private bool _isRetryGame;
         private bool _wasBtnDown;
         private bool _ignoreUnPauseRequestOnce;
-        private int _timeOverCount1;
-        private int _timeOverCount2;
         private bool _isMugenActive;
         private bool _isStepMode;
         private long _stepModeCounter;
@@ -2088,7 +2086,7 @@ namespace SwissArmyKnifeForMugen
             if (ProfileManager.MainObj().GetProfile(this._workingProfileId).IsExperimentalBreakpoints())
                 this.__SetExperimentalBreakPoint(targetAdder);
             else
-                return this.watcher.SetBreakpoint(targetAdder);
+                return this.watcher.SetDataBreakpoint(targetAdder);
             return true;
         }
 
@@ -3190,8 +3188,6 @@ namespace SwissArmyKnifeForMugen
                             this.debugPassInfo.trueTeam2WinCount = 0;
                             this.debugPassInfo.num3 = 0;
                             this.debugPassInfo.num4 = 0;
-                            this._timeOverCount1 = 0;
-                            this._timeOverCount2 = 0;
                             MugenProfile profile = ProfileManager.MainObj().GetProfile(this._workingProfileId);
                             if (profile == null || !profile.IsAutoMode() || this.numOfGames == 0)
                                 ++this.numOfGames;
