@@ -54,6 +54,7 @@ namespace SwissArmyKnifeForMugen
         private int[] mugenProjId = new int[50];
         private int[] mugenProjX = new int[50];
         private int[] mugenProjY = new int[50];
+        private int[] mugenProjAnim = new int[50];
         private VarForm.SysInfo_t mugenSysInfo = new VarForm.SysInfo_t();
         private int[] mugenSysvar = new int[5];
         private int[] mugenVar = new int[60];
@@ -1505,25 +1506,31 @@ namespace SwissArmyKnifeForMugen
             uint projListAdder = (uint)PlayerUtils.GetProjListAddress(this.watcher, projBaseAdder);
             if (projListAdder == 0U)
                 return;
+            uint animAdder = PlayerUtils.GetAnimListAddr(this.watcher, (uint)GameUtils.GetBaseAddress(this.watcher), playerAddr);
+            if (animAdder == 0U)
+                return;
             for (int index = 0; index < 50; ++index)
             {
                 uint projAdder = PlayerUtils.GetProjAddress(this.watcher, projListAdder, (uint)(this._projHeadNo + index));
+                int projAnimIdx = this.watcher.GetInt32Data(projAdder, this.watcher.MugenDatabase.PROJ_ANIM_INDEX_PROJ_OFFSET);
                 if (PlayerUtils.DoesProjExist(this.watcher, projBaseAdder, this._projHeadNo + index, projAdder))
                 {
                     this.mugenProjId[index] = PlayerUtils.GetProjId(this.watcher, projAdder);
                     this.mugenProjX[index] = PlayerUtils.GetProjX(this.watcher, playerAddr, projAdder);
                     this.mugenProjY[index] = PlayerUtils.GetProjY(this.watcher, playerAddr, projAdder);
+                    this.mugenProjAnim[index] = PlayerUtils.GetAnimNo(this.watcher, animAdder, projAnimIdx);
                 }
                 else
                 {
                     this.mugenProjId[index] = -1;
                     this.mugenProjX[index] = 0;
                     this.mugenProjY[index] = 0;
+                    this.mugenProjAnim[index] = 0;
                 }
             }
             if (DebugForm.MainObj() == null)
                 return;
-            this.BeginInvoke((Action)(() => DebugForm.MainObj().DisplayProjs(playerId, this._projHeadNo, 50, this.mugenProjId, this.mugenProjX, this.mugenProjY)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
+            this.BeginInvoke((Action)(() => DebugForm.MainObj().DisplayProjs(playerId, this._projHeadNo, 50, this.mugenProjId, this.mugenProjX, this.mugenProjY, this.mugenProjAnim)))?.AsyncWaitHandle.WaitOne(this._invokeWaitTime);
         }
 
         /// <summary>
