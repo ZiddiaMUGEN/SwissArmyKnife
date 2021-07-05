@@ -520,12 +520,12 @@ namespace SwissArmyKnifeForMugen.Displays
         {
             if (MugenWindow.MainObj() == null || ProfileManager.MainObj().GetProfile(_selectedProfileNo) == null)
                 return false;
-            if (MugenWindow.MainObj().getMugenProcess() == null)
+            if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() == null)
             {
                 if (!MugenWindow.MainObj().LoadMugen(_selectedProfileNo))
                     return false;
                 MugenWindow.MainObj().Show();
-                if (MugenWindow.MainObj().getMugenProcess() != null)
+                if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() != null)
                 {
                     _didMugenCrashed = false;
                     _isRetrying = false;
@@ -809,7 +809,7 @@ namespace SwissArmyKnifeForMugen.Displays
                 return;
             int num = (int)SetThreadExecutionState(3U);
             watchTimer.Stop();
-            if (MugenWindow.MainObj().getMugenProcess() == null)
+            if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() == null)
             {
                 if (!_isAutoModeRunning)
                 {
@@ -893,12 +893,12 @@ namespace SwissArmyKnifeForMugen.Displays
         /// <param name="forceActivate"></param>
         public void ActivateAll(bool forceActivate)
         {
-            if (!forceActivate && MugenWindow.MainObj().getMugenProcess() != null && !MugenWindow.MainObj().IsActivatedOnce() || _isClosing)
+            if (!forceActivate && MugenWindow.MainObj().GetWatcher().GetMugenProcess() != null && !MugenWindow.MainObj().IsActivatedOnce() || _isClosing)
                 return;
             ShowTop(LogManager.MainObj().Handle);
             ShowTop(DebugForm.MainObj().Handle);
             ShowTop(VarForm.MainObj().Handle);
-            if (MugenWindow.MainObj().getMugenProcess() != null)
+            if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() != null)
             {
                 SetForegroundWindowEx(Handle);
                 if (!MugenWindow.MainObj().Visible)
@@ -1295,7 +1295,7 @@ namespace SwissArmyKnifeForMugen.Displays
         {
             ProfileManager.MainObj().SetCurrentProfile(profileListBox.SelectedIndex + 1);
             MugenProfile currentProfile = ProfileManager.MainObj().GetCurrentProfile();
-            if (currentProfile == null || MugenWindow.MainObj().getMugenProcess() != null || _isAutoModeRunning)
+            if (currentProfile == null || MugenWindow.MainObj().GetWatcher().GetMugenProcess() != null || _isAutoModeRunning)
                 return;
             string profileName = currentProfile.GetProfileName();
             string mugenExePath = currentProfile.GetMugenExePath();
@@ -1335,7 +1335,7 @@ namespace SwissArmyKnifeForMugen.Displays
                 }
                 else
                 {
-                    if (MugenWindow.MainObj().getMugenProcess() != null || _isAutoModeRunning)
+                    if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() != null || _isAutoModeRunning)
                         return;
                     if (currentProfile1 != null)
                     {
@@ -1473,7 +1473,7 @@ namespace SwissArmyKnifeForMugen.Displays
                             quitToolStripMenuItem.Text = "Close mugen.";
                             break;
                     }
-                    if (MugenWindow.MainObj().getMugenProcess() != null || _isAutoModeRunning)
+                    if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() != null || _isAutoModeRunning)
                     {
                         launchToolStripMenuItem.Enabled = false;
                         launchQuickVSToolStripMenuItem.Enabled = false;
@@ -1640,7 +1640,7 @@ namespace SwissArmyKnifeForMugen.Displays
             }
             else
             {
-                if (MugenWindow.MainObj().getMugenProcess() != null || _isAutoModeRunning)
+                if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() != null || _isAutoModeRunning)
                     return;
                 ProfileManager.MainObj().SetCurrentProfile(profileListBox.SelectedIndex + 1);
                 MugenProfile currentProfile = ProfileManager.MainObj().GetCurrentProfile();
@@ -1920,7 +1920,7 @@ namespace SwissArmyKnifeForMugen.Displays
                 }
                 else
                 {
-                    if (MugenWindow.MainObj().getMugenProcess() != null || _isAutoModeRunning)
+                    if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() != null || _isAutoModeRunning)
                         return;
                     if (currentProfile != null)
                     {
@@ -1964,7 +1964,7 @@ namespace SwissArmyKnifeForMugen.Displays
             if (!_isAutoModeRunning)
                 return;
             int num1 = (int)SetThreadExecutionState(3U);
-            if (MugenWindow.MainObj().getMugenProcess() == null)
+            if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() == null)
                 MugenWindow.MainObj().SetTitleActive(false);
             else if (MugenWindow.MainObj().CheckMugenError())
             {
@@ -1979,7 +1979,7 @@ namespace SwissArmyKnifeForMugen.Displays
             {
                 if (profile.IsAutoMode() && mugenWindow.IsMugenCrashed())
                     _didMugenCrashed = true;
-                if (mugenWindow.getMugenProcess() == null)
+                if (mugenWindow.GetWatcher().GetMugenProcess() == null)
                 {
                     if (mugenWindow.IsGameQuitted() && (!_didMugenCrashed || _didAutoModeQuitted))
                     {
@@ -2121,7 +2121,7 @@ namespace SwissArmyKnifeForMugen.Displays
             {
                 _didAutoModeQuitted = true;
                 MugenWindow.MainObj().SetGameQuitted();
-                if (MugenWindow.MainObj().getMugenProcess() == null)
+                if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() == null)
                     return;
                 CloseMugen();
             }
@@ -2131,7 +2131,7 @@ namespace SwissArmyKnifeForMugen.Displays
         {
             if (e.KeyChar != '\x001B')
                 return;
-            if (MugenWindow.MainObj().getMugenProcess() != null)
+            if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() != null)
                 MugenWindow.MainObj().InjectESC();
             else if (_isAutoModeRunning)
                 MugenWindow.MainObj().SetGameQuitted();
@@ -2158,7 +2158,7 @@ namespace SwissArmyKnifeForMugen.Displays
                     return;
                 _disableQuitButton = true;
                 ActivateAll(true);
-                if (MugenWindow.MainObj().getMugenProcess() == null && !_isAutoModeRunning)
+                if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() == null && !_isAutoModeRunning)
                 {
                     ProfileManager.MainObj().SetCurrentProfile(profileListBox.SelectedIndex + 1);
                     MugenProfile currentProfile1 = ProfileManager.MainObj().GetCurrentProfile();
@@ -2180,7 +2180,7 @@ namespace SwissArmyKnifeForMugen.Displays
                     }
                     else
                     {
-                        if (MugenWindow.MainObj().getMugenProcess() != null || _isAutoModeRunning)
+                        if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() != null || _isAutoModeRunning)
                             return;
                         if (currentProfile1 != null)
                         {
@@ -2225,7 +2225,7 @@ namespace SwissArmyKnifeForMugen.Displays
                 {
                     _didAutoModeQuitted = true;
                     MugenWindow.MainObj().SetGameQuitted();
-                    if (MugenWindow.MainObj().getMugenProcess() == null)
+                    if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() == null)
                         return;
                     CloseMugen();
                 }

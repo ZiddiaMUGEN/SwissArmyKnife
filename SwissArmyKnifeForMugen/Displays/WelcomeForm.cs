@@ -17,7 +17,6 @@ namespace SwissArmyKnifeForMugen.Displays
     public class WelcomeForm : Form
     {
         private bool _clickedOK;
-        private IContainer components;
         private Button cancelButton;
         private Button okButton;
         private TextBox textBox1;
@@ -40,8 +39,6 @@ namespace SwissArmyKnifeForMugen.Displays
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && components != null)
-                components.Dispose();
             base.Dispose(disposing);
         }
 

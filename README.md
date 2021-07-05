@@ -12,7 +12,7 @@ New features compared to the original SAKWM include:
 - Clsn1 detection
 - LocalCoord display
 
-DebuggingDLL.dll compiled from https://github.com/SymbolSource/Microsoft.Samples.Debugging
+Microsoft.Samples.Debugging.dll compiled from https://github.com/SymbolSource/Microsoft.Samples.Debugging
 
 ## Overview
 

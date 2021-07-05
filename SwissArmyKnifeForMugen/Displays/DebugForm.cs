@@ -4,6 +4,8 @@
 // MVID: 09478AD8-365C-4BF3-BEA1-B5785151259B
 // Assembly location: C:\Users\ziddi\Downloads\Swiss Army Knife 1.1 Conversion\Swiss Army Knife 1.1 Conversion\SAKnifeWM.exe
 
+using MugenWatcher.EnumTypes;
+using MugenWatcher.Utils;
 using SwissArmyKnifeForMugen.Configs;
 using SwissArmyKnifeForMugen.Triggers;
 using SwissArmyKnifeForMugen.Utils;
@@ -80,6 +82,7 @@ namespace SwissArmyKnifeForMugen.Displays
         private ColumnHeader columnHeader6;
         private ColumnHeader columnHeader7;
         private ColumnHeader columnHeader8;
+        private ColumnHeader columnHeaderProjAnim;
         private RadioButton p4RadioButton;
         private RadioButton p3RadioButton;
         private RadioButton p2RadioButton;
@@ -116,6 +119,7 @@ namespace SwissArmyKnifeForMugen.Displays
         private int[] _projId;
         private int[] _projX;
         private int[] _projY;
+        private int[] _projAnim;
         private Color _defaultBgColor;
         private Color _defaultFgColor;
         private bool _ignoreUnPauseRequestOnce;
@@ -198,6 +202,7 @@ namespace SwissArmyKnifeForMugen.Displays
             this.columnHeader6 = new ColumnHeader();
             this.columnHeader7 = new ColumnHeader();
             this.columnHeader8 = new ColumnHeader();
+            this.columnHeaderProjAnim = new ColumnHeader();
             this.projContextMenuStrip = new ContextMenuStrip(this.components);
             this.projToolStripMenuItem1 = new ToolStripMenuItem();
             this.projToolStripMenuItem2 = new ToolStripMenuItem();
@@ -708,12 +713,13 @@ namespace SwissArmyKnifeForMugen.Displays
             this.projHeadNumericUpDown.ValueChanged += new EventHandler(this.projHeadNumericUpDown_ValueChanged);
             this.projHeadNumericUpDown.MouseClick += new MouseEventHandler(this.projHeadNumericUpDown_MouseClick);
             this.projListView.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            this.projListView.Columns.AddRange(new ColumnHeader[4]
+            this.projListView.Columns.AddRange(new ColumnHeader[5]
             {
         this.columnHeader5,
         this.columnHeader6,
         this.columnHeader7,
-        this.columnHeader8
+        this.columnHeader8,
+        this.columnHeaderProjAnim
             });
             this.projListView.ContextMenuStrip = this.projContextMenuStrip;
             this.projListView.FullRowSelect = true;
@@ -738,6 +744,8 @@ namespace SwissArmyKnifeForMugen.Displays
             this.columnHeader6.Width = 80;
             this.columnHeader7.Text = "X";
             this.columnHeader8.Text = "Y";
+            this.columnHeaderProjAnim.Text = "Anim";
+            this.columnHeaderProjAnim.Width = 80;
             this.projContextMenuStrip.Items.AddRange(new ToolStripItem[2]
             {
         (ToolStripItem) this.projToolStripMenuItem1,
@@ -1179,9 +1187,10 @@ namespace SwissArmyKnifeForMugen.Displays
         {
             this.projListView.Items.Clear();
             for (int index = 0; index < projCount; ++index)
-                this.projListView.Items.Add(new ListViewItem(new string[4]
+                this.projListView.Items.Add(new ListViewItem(new string[5]
                 {
           index.ToString(),
+          "-",
           "-",
           "-",
           "-"
@@ -1191,6 +1200,7 @@ namespace SwissArmyKnifeForMugen.Displays
             this._projId = (int[])null;
             this._projX = (int[])null;
             this._projY = (int[])null;
+            this._projAnim = (int[])null;
             this.projHeadNumericUpDown.Value = 0M;
             this._isProjListDirty = true;
             MugenWindow.MainObj().SetProjHeadNo(0);
@@ -1201,11 +1211,11 @@ namespace SwissArmyKnifeForMugen.Displays
             this.p4RadioButton.Enabled = false;
         }
 
-        public void InitTriggerCheck(MugenWindow.MugenType_t mugen_type)
+        public void InitTriggerCheck(MugenType_t mugen_type)
         {
         }
 
-        public void PreInitTriggerCheck(MugenWindow.MugenType_t mugen_type)
+        public void PreInitTriggerCheck(MugenType_t mugen_type)
         {
             this.label1.Text = "Debug Text Color:";
             if (MugenWindow.MainObj().GetTriggerCheckMode() == TriggerCheckTarget.CheckMode.CHECKMODE_STARTED)
@@ -1228,13 +1238,13 @@ namespace SwissArmyKnifeForMugen.Displays
             }
         }
 
-        public void FinalizeTriggerCheck(MugenWindow.MugenType_t mugen_type)
+        public void FinalizeTriggerCheck(MugenType_t mugen_type)
         {
         }
 
-        public void PostFinalizeTriggerCheck(MugenWindow.MugenType_t mugen_type)
+        public void PostFinalizeTriggerCheck(MugenType_t mugen_type)
         {
-            if (MugenWindow.MainObj().GetTriggerCheckMode() != TriggerCheckTarget.CheckMode.CHECKMODE_STARTED || MugenWindow.MainObj().IsPaused())
+            if (MugenWindow.MainObj().GetTriggerCheckMode() != TriggerCheckTarget.CheckMode.CHECKMODE_STARTED || GameUtils.IsPaused(MugenWindow.MainObj().GetWatcher()))
                 return;
             this.checkModeStateText.BackColor = this._defaultBgColor;
             this.checkModeStateText.ForeColor = this._defaultFgColor;
@@ -1385,7 +1395,8 @@ namespace SwissArmyKnifeForMugen.Displays
           int projCount,
           int[] projId,
           int[] projX,
-          int[] projY)
+          int[] projY,
+          int[] projAnim)
         {
             if (!DebugForm.IsWindowVisible(this.Handle))
                 return;
@@ -1407,6 +1418,12 @@ namespace SwissArmyKnifeForMugen.Displays
                 if (this._projY == null)
                     return;
             }
+            if (this._projAnim == null)
+            {
+                this._projAnim = new int[projCount];
+                if (this._projAnim == null)
+                    return;
+            }
             if (this.projListView.Items.Count < projCount)
                 return;
             if (playerId <= 0)
@@ -1421,7 +1438,7 @@ namespace SwissArmyKnifeForMugen.Displays
                     this.projListView.ForeColor = Control.DefaultForeColor;
                 for (int index = 0; index < projCount; ++index)
                 {
-                    if (projId[index] != this._projId[index] || projX[index] != this._projX[index] || (projY[index] != this._projY[index] || this._isProjListDirty))
+                    if (projId[index] != this._projId[index] || projX[index] != this._projX[index] || projY[index] != this._projY[index] || projAnim[index] != this._projAnim[index] || this._isProjListDirty)
                     {
                         if (this._isProjListDirty)
                             this.projListView.Items[index].SubItems[0].Text = (headNo + index).ToString();
@@ -1430,12 +1447,14 @@ namespace SwissArmyKnifeForMugen.Displays
                             this.projListView.Items[index].SubItems[1].Text = projId[index].ToString();
                             this.projListView.Items[index].SubItems[2].Text = projX[index].ToString();
                             this.projListView.Items[index].SubItems[3].Text = projY[index].ToString();
+                            this.projListView.Items[index].SubItems[4].Text = projAnim[index].ToString();
                         }
                         else
                         {
                             this.projListView.Items[index].SubItems[1].Text = "";
                             this.projListView.Items[index].SubItems[2].Text = "";
                             this.projListView.Items[index].SubItems[3].Text = "";
+                            this.projListView.Items[index].SubItems[4].Text = "";
                         }
                     }
                 }
@@ -1443,6 +1462,7 @@ namespace SwissArmyKnifeForMugen.Displays
                 projId.CopyTo((Array)this._projId, 0);
                 projX.CopyTo((Array)this._projX, 0);
                 projY.CopyTo((Array)this._projY, 0);
+                projAnim.CopyTo((Array)this._projAnim, 0);
             }
         }
 
@@ -1507,7 +1527,7 @@ namespace SwissArmyKnifeForMugen.Displays
             }
             else
             {
-                MugenWindow.MainObj().SetPaused(this.pauseCheckBox.Checked);
+                GameUtils.SetPaused(MugenWindow.MainObj().GetWatcher(), this.pauseCheckBox.Checked);
                 this._SetStepInterval();
                 if (this.pauseCheckBox.Checked)
                     return;
@@ -1906,7 +1926,7 @@ namespace SwissArmyKnifeForMugen.Displays
             {
                 if (e.KeyChar != '\x001B')
                     return;
-                if (MugenWindow.MainObj().getMugenProcess() != null)
+                if (MugenWindow.MainObj().GetWatcher().GetMugenProcess() != null)
                     MugenWindow.MainObj().InjectESC();
                 e.Handled = true;
             }
@@ -3245,7 +3265,7 @@ namespace SwissArmyKnifeForMugen.Displays
                 this.triggerCheckResumeButton.Enabled = false;
                 if (MugenWindow.MainObj().GetIsExperimental())
                 {
-                    MugenWindow.MainObj().SetPaused(false);
+                    GameUtils.SetPaused(MugenWindow.MainObj().GetWatcher(), false);
                     MugenWindow.MainObj().WatchInitVal = 0U;
                 }
                 MugenWindow.MainObj().ResumeTriggerCheckMode();

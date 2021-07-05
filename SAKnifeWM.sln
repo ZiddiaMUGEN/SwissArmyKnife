@@ -1,3 +1,4 @@
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.30907.101
@@ -14,15 +15,11 @@ Global
 		{5D34859C-7941-4C60-8032-0E17842C9DBC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5D34859C-7941-4C60-8032-0E17842C9DBC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5D34859C-7941-4C60-8032-0E17842C9DBC}.Release|Any CPU.Build.0 = Release|Any CPU
-		{BE225037-5123-4090-9344-494A4DB390B6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{BE225037-5123-4090-9344-494A4DB390B6}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{BE225037-5123-4090-9344-494A4DB390B6}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{BE225037-5123-4090-9344-494A4DB390B6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {A8FA8DE6-5EC3-478B-A063-0337C4AA65F2}
+		SolutionGuid = {3D6B1FD3-F561-478B-8F78-12C62FFC8AA8}
 	EndGlobalSection
 EndGlobal
