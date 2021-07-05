@@ -12,7 +12,8 @@ New features compared to the original SAKWM include:
 - Clsn1 detection
 - LocalCoord display
 
-Microsoft.Samples.Debugging.dll compiled from https://github.com/SymbolSource/Microsoft.Samples.Debugging
+Microsoft.Samples.Debugging.dll compiled from https://github.com/ZiddiaMUGEN/Microsoft.Samples.Debugging (forked from https://github.com/SymbolSource/Microsoft.Samples.Debugging with minor bugfixes/compatibility changes)
+MugenWatcher.dll compiled from https://github.com/ZiddiaMUGEN/MugenWatcher
 
 ## Overview
 
