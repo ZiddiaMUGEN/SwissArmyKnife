@@ -22,3 +22,4 @@ Swiss Army Knife is a utility used for debugging and developing MUGEN characters
 It uses the excellent Microsoft.Samples.Debugging library as well as normal subprocess libraries to read and write data in the Mugen process. This allows gathering info on constants such as Alive, Life, Power, and Palno, temporary data such as Damage, existence of Clsn1/Clsn2, HitBy values, and AssertSpecial flags. It also allows insertion of commands, code, and data, enabling the tool to force MUGEN to pause, automatically step frame-by-frame at fixed intervals, or perform other cool tricks like changing the debug text color for easy reading.
 
 On top of this, a trigger breakpoint system is offered to help debug even more closely. Under this system, MUGEN will automatically be frozen when a particular condition (e.g. `P1,Alive = 0`) is met, allowing review of the states and data which caused this condition.
+
