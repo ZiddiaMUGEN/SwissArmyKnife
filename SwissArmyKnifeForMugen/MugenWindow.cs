@@ -153,6 +153,18 @@ namespace SwissArmyKnifeForMugen
             if (!File.Exists(MainForm.GetFullPath("background.jpg")))
                 return;
             this.backgroundBox.ImageLocation = MainForm.GetFullPath("background.jpg");
+            this.backgroundBox.SizeMode = PictureBoxSizeMode.StretchImage;
+        }
+
+        internal void ResizeToProfile(MugenProfile profile)
+        {
+            // don't resize during MUGEN runtime!
+            if (this.watcher.CheckMugenProcessActive()) return;
+            this.ClientSize = new Size(profile.GetScreenWidth(), profile.GetScreenHeight());
+            this.backgroundBox.Size = new Size(profile.GetScreenWidth(), profile.GetScreenHeight());
+
+            DebugForm.MainObj().SetDesktopBounds(this.Location.X + this.Size.Width + 20, this.Location.Y, DebugForm.MainObj().Size.Width, this.Size.Height);
+            VarForm.MainObj().SetDesktopBounds(this.Location.X, this.Location.Y + this.Size.Height + 20, this.Size.Width, VarForm.MainObj().Size.Height);
         }
 
         /// <summary>
@@ -237,7 +249,7 @@ namespace SwissArmyKnifeForMugen
         {
             if (this._isDebugBreakMode || this._isMugenCrashed || this._isMugenFrozen)
                 return;
-            MugenWindow.SetWindowPos(hWnd, 0, 0, 0, 640, 480, 16387);
+            MugenWindow.SetWindowPos(hWnd, 0, 0, 0, this.backgroundBox.Size.Width, this.backgroundBox.Size.Height, 16387);
         }
 
         [DllImport("user32.dll")]
@@ -520,7 +532,7 @@ namespace SwissArmyKnifeForMugen
 
                 MugenWindow.SetParent(this.watcher.GetMugenWindowHandle(), this.backgroundBox.Handle);
                 MugenWindow.SetWindowLong(this.watcher.GetMugenWindowHandle(), GWL_STYLE, windowStyles);
-                MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, 640, 480, SWP_SHOWWINDOW | SWP_NOZORDER);
+                MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, this.backgroundBox.Size.Width, this.backgroundBox.Size.Height, SWP_SHOWWINDOW | SWP_NOZORDER);
                 MugenWindow.SetParent(this.watcher.GetMugenWindowHandle(), this.backgroundBox.Handle);
 
                 this.isWindowCaptured = true;
@@ -550,12 +562,12 @@ namespace SwissArmyKnifeForMugen
             if (MugenWindow.IsWindowVisible(this.watcher.GetMugenWindowHandle()))
             {
                 this._isMugenHidden = true;
-                MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, 640, 480, 16532);
+                MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, this.backgroundBox.Size.Width, this.backgroundBox.Size.Height, 16532);
             }
             else
             {
                 this._isMugenHidden = false;
-                MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, 640, 480, 16532);
+                MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, this.backgroundBox.Size.Width, this.backgroundBox.Size.Height, 16532);
             }
         }
 
@@ -899,7 +911,7 @@ namespace SwissArmyKnifeForMugen
         {
             if (!this.watcher.CheckMugenProcessActive())
                 return;
-            MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, 640, 480, 16400);
+            MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, this.backgroundBox.Size.Width, this.backgroundBox.Size.Height, 16400);
             if (!this._ignoreUnPauseRequestOnce)
                 this.SetForegroundWindowEx(this.watcher.GetMugenWindowHandle());
             this._ignoreUnPauseRequestOnce = false;
@@ -937,7 +949,7 @@ namespace SwissArmyKnifeForMugen
                         int num = (int)MugenWindow.SetWindowLong(mugenProcess.MainWindowHandle, -16, unValue);
                     }
                 }
-                MugenWindow.SetWindowPos(mugenProcess.MainWindowHandle, 0, 0, 0, 640, 480, 16384);
+                MugenWindow.SetWindowPos(mugenProcess.MainWindowHandle, 0, 0, 0, this.backgroundBox.Size.Width, this.backgroundBox.Size.Height, 16384);
             }
             else
             {

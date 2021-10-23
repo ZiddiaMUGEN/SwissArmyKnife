@@ -82,6 +82,8 @@ namespace SwissArmyKnifeForMugen.Displays
         private RadioButton allVSModeRadioButton;
         private RadioButton oneVSModeRadioButton;
         private CheckBox enableExperimentalBreakpointsCheckbox;
+        private NumericUpDown windowWidthInput;
+        private NumericUpDown windowHeightInput;
 
         public ProfileConfigPanel() => InitializeComponent();
 
@@ -108,6 +110,8 @@ namespace SwissArmyKnifeForMugen.Displays
             enableAutoModecheckBox.Checked = currentProfile.IsAutoModeAvailable();
             autoModeRadioButton.Enabled = currentProfile.IsAutoModeAvailable();
             enableExperimentalBreakpointsCheckbox.Checked = currentProfile.IsExperimentalBreakpoints();
+            windowWidthInput.Value = currentProfile.GetScreenWidth();
+            windowHeightInput.Value = currentProfile.GetScreenHeight();
             switch (currentProfile.GetDefaultGameMode())
             {
                 case MugenProfile.GameMode.NORMAL:
@@ -263,7 +267,7 @@ namespace SwissArmyKnifeForMugen.Displays
                 return false;
             }
             currentProfile.MakeBackup();
-            string str1 = ";" + Environment.NewLine + "; Filename:" + currentProfile.GetProfileFile() + Environment.NewLine + ";" + Environment.NewLine + Environment.NewLine + "[Mugen]" + Environment.NewLine + "ProfileName = " + profileNameTextBox.Text + Environment.NewLine + "MugenExe = " + mugenExeTextBox.Text + Environment.NewLine + "SelectDotDef = " + selectDefTextBox.Text + Environment.NewLine + "MugenCommandLineOptions = " + cmdLineTextBox.Text + Environment.NewLine + "DebugMode = " + (enableDebugCheckBox.Checked ? "1" : "0") + Environment.NewLine + "SpeedUp = " + (enableSpeedUpCheckBox.Checked ? "1" : "0") + Environment.NewLine + "SkipMode = " + (enableSkipModeCheckBox.Checked ? "1" : "0") + Environment.NewLine + "ExperimentalBPS = " + (enableExperimentalBreakpointsCheckbox.Checked ? "1" : "0") + Environment.NewLine;
+            string str1 = ";" + Environment.NewLine + "; Filename:" + currentProfile.GetProfileFile() + Environment.NewLine + ";" + Environment.NewLine + Environment.NewLine + "[Mugen]" + Environment.NewLine + "ProfileName = " + profileNameTextBox.Text + Environment.NewLine + "MugenExe = " + mugenExeTextBox.Text + Environment.NewLine + "SelectDotDef = " + selectDefTextBox.Text + Environment.NewLine + "MugenCommandLineOptions = " + cmdLineTextBox.Text + Environment.NewLine + "DebugMode = " + (enableDebugCheckBox.Checked ? "1" : "0") + Environment.NewLine + "SpeedUp = " + (enableSpeedUpCheckBox.Checked ? "1" : "0") + Environment.NewLine + "SkipMode = " + (enableSkipModeCheckBox.Checked ? "1" : "0") + Environment.NewLine + "ExperimentalBPS = " + (enableExperimentalBreakpointsCheckbox.Checked ? "1" : "0") + Environment.NewLine + "ScreenWidth = " + windowWidthInput.Value.ToString() + Environment.NewLine + "ScreenHeight = " + windowHeightInput.Value.ToString() + Environment.NewLine;
             if (normalModeRadioButton.Checked)
                 str1 += "DefaultGameMode = 0";
             else if (quickModeRadioButton.Checked)
@@ -1037,6 +1041,16 @@ namespace SwissArmyKnifeForMugen.Displays
 
         private void InitializeComponent()
         {
+            Label widthLabel = new Label()
+            {
+                Text = "MUGEN Window Width:"
+            };
+
+            Label heightLabel = new Label()
+            {
+                Text = "MUGEN Window Height:"
+            };
+
             components = new Container();
             ComponentResourceManager componentResourceManager = new ComponentResourceManager(typeof(ProfileConfigPanel));
             cancelButton = new Button();
@@ -1100,6 +1114,16 @@ namespace SwissArmyKnifeForMugen.Displays
             selectOpenFileDialog = new OpenFileDialog();
             toolTip1 = new ToolTip(components);
             helpCheckBox = new CheckBox();
+            windowWidthInput = new NumericUpDown()
+            {
+                Minimum = 320,
+                Maximum = 2560
+            };
+            windowHeightInput = new NumericUpDown()
+            {
+                Minimum = 240,
+                Maximum = 1920
+            };
             tabControl1.SuspendLayout();
             tabPage1.SuspendLayout();
             groupBox1.SuspendLayout();
@@ -1174,9 +1198,13 @@ namespace SwissArmyKnifeForMugen.Displays
             groupBox1.Controls.Add(openFileButton1);
             groupBox1.Controls.Add(mugenExeTextBox);
             groupBox1.Controls.Add(mugenExeLabel);
+            groupBox1.Controls.Add(windowWidthInput);
+            groupBox1.Controls.Add(windowHeightInput);
+            groupBox1.Controls.Add(widthLabel);
+            groupBox1.Controls.Add(heightLabel);
             groupBox1.Location = new Point(3, 19);
             groupBox1.Name = "groupBox1";
-            groupBox1.Size = new Size(601, 354);
+            groupBox1.Size = new Size(601, 400);
             groupBox1.TabIndex = 1;
             groupBox1.TabStop = false;
             groupBox1.Text = "Mugen settings";
@@ -1195,7 +1223,7 @@ namespace SwissArmyKnifeForMugen.Displays
             textBox1.Multiline = true;
             textBox1.Name = "textBox1";
             textBox1.ReadOnly = true;
-            textBox1.Size = new Size(432, 52);
+            textBox1.Size = new Size(432, 36);
             textBox1.TabIndex = 22;
             textBox1.TabStop = false;
             textBox1.Text = "The settings will be used when you click the 'Run mugen' button. \r\n\r\n(Note: the rest of these options can still be used manually from the 'More commands' menu";
@@ -1271,6 +1299,16 @@ namespace SwissArmyKnifeForMugen.Displays
             enableExperimentalBreakpointsCheckbox.Text = "Enable experimental breakpoints";
             enableExperimentalBreakpointsCheckbox.UseVisualStyleBackColor = true;
             enableExperimentalBreakpointsCheckbox.CheckedChanged += new EventHandler(enableSkipModeCheckBox_CheckedChanged);
+            widthLabel.AutoSize = true;
+            widthLabel.Location = new Point(320, 342);
+            heightLabel.AutoSize = true;
+            heightLabel.Location = new Point(320, 362);
+            windowWidthInput.AutoSize = true;
+            windowWidthInput.Location = new Point(450, 340);
+            windowWidthInput.Name = "windowWidthInput";
+            windowHeightInput.AutoSize = true;
+            windowHeightInput.Location = new Point(450, 360);
+            windowHeightInput.Name = "windowHeightInput";
             enableSpeedUpCheckBox.AutoSize = true;
             enableSpeedUpCheckBox.Location = new Point(297, 192);
             enableSpeedUpCheckBox.Name = "enableSpeedUpCheckBox";

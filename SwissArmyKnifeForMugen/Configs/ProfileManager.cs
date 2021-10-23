@@ -68,6 +68,7 @@ namespace SwissArmyKnifeForMugen.Configs
         {
             int currentProfileNo = current_profile_no;
             current_profile_no = new_profile_no;
+            MugenWindow.MainObj().ResizeToProfile(this.GetCurrentProfile());
             return currentProfileNo;
         }
 

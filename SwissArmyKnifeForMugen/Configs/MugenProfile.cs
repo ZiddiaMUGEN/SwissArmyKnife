@@ -78,6 +78,8 @@ namespace SwissArmyKnifeForMugen.Configs
         private GameMode default_game_mode;
         private GameMode current_game_mode;
         private bool _countIncremented;
+        private int screen_width;
+        private int screen_height;
 
         public QuickVSProfile GetQuickVSProfile() => _qvsProfile;
 
@@ -515,6 +517,9 @@ namespace SwissArmyKnifeForMugen.Configs
 
         public bool IsStrictRoundMode() => strict_round_mode;
 
+        public int GetScreenWidth() => screen_width;
+        public int GetScreenHeight() => screen_height;
+
         protected override void InitSubProfiles() => _qvsProfile.InitProfile(profile_folder, cfg_file_name + ".qvs");
 
         private ParamMode _CheckParamMode(string stBuffer)
@@ -585,6 +590,20 @@ namespace SwissArmyKnifeForMugen.Configs
                 if (!int.TryParse(GetValue("DebugMode", stBuffer), out result) || result == 0)
                     return;
                 debug_mode = true;
+            }
+            else if (stBuffer.IndexOf("ScreenWidth", 0) == 0)
+            {
+                int result;
+                if (!int.TryParse(GetValue("ScreenWidth", stBuffer), out result))
+                    return;
+                screen_width = result;
+            }
+            else if (stBuffer.IndexOf("ScreenHeight", 0) == 0)
+            {
+                int result;
+                if (!int.TryParse(GetValue("ScreenHeight", stBuffer), out result))
+                    return;
+                screen_height = result;
             }
             else
             {
@@ -717,6 +736,8 @@ namespace SwissArmyKnifeForMugen.Configs
             strict_round_mode = false;
             max_round_time = 10;
             char_list_raw_data = null;
+            screen_width = 640;
+            screen_height = 480;
         }
 
         protected override bool LoadCfgFile(string the_file)

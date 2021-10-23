@@ -990,7 +990,7 @@ namespace SwissArmyKnifeForMugen.Displays
                     int width = size.Width;
                     int num2 = x1 + width + 11;
                     location = Location;
-                    int num3 = location.Y + num1;
+                    int num3 = location.Y;
                     int x2 = num2;
                     int y = num3;
                     mugenWindow.SetDesktopLocation(x2, y);
@@ -1108,6 +1108,7 @@ namespace SwissArmyKnifeForMugen.Displays
                 else if (isFirstLaunch)
                     VarForm.MainObj().Hide();
             }
+            MugenWindow.MainObj().ResizeToProfile(ProfileManager.MainObj().GetCurrentProfile());
             Activate();
         }
 
