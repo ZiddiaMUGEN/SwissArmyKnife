@@ -386,44 +386,19 @@ namespace SwissArmyKnifeForMugen.Displays
                             varListView.Items[2].SubItems[2].Text = "ctrl=" + sysInfo.ctrl;
                         if (sysInfo.statetype != _sysInfo.statetype || _isDirty)
                         {
-                            string str;
-                            switch (sysInfo.statetype)
+                            string str = string.Format("statetype={0}", sysInfo.statetype);
+                            if (Enum.IsDefined(typeof(SysInfo_t.StateType), sysInfo.statetype))
                             {
-                                case 1:
-                                    str = "statetype=S";
-                                    break;
-                                case 2:
-                                    str = "statetype=C";
-                                    break;
-                                case 3:
-                                    str = "statetype=A";
-                                    break;
-                                case 4:
-                                    str = "statetype=L";
-                                    break;
-                                default:
-                                    str = "statetype=" + sysInfo.statetype;
-                                    break;
+                                str = string.Format("statetype={0:G}", (SysInfo_t.StateType)sysInfo.statetype);
                             }
                             varListView.Items[2].SubItems[3].Text = str;
                         }
                         if (sysInfo.movetype != _sysInfo.movetype || _isDirty)
                         {
-                            string str;
-                            switch (sysInfo.movetype)
+                            string str = string.Format("movetype={0}", sysInfo.movetype);
+                            if (Enum.IsDefined(typeof(SysInfo_t.MoveType), sysInfo.movetype))
                             {
-                                case 0:
-                                    str = "movetype=I";
-                                    break;
-                                case 1:
-                                    str = "movetype=A";
-                                    break;
-                                case 2:
-                                    str = "movetype=H";
-                                    break;
-                                default:
-                                    str = "movetype=" + sysInfo.movetype;
-                                    break;
+                                str = string.Format("movetype={0:G}", (SysInfo_t.MoveType)sysInfo.movetype);
                             }
                             varListView.Items[2].SubItems[4].Text = str;
                         }
@@ -672,6 +647,8 @@ namespace SwissArmyKnifeForMugen.Displays
             }
         }
 
+        
+
         /// <summary>
         /// util for converting an int HitAttr enum into the actual HitAttr string
         /// </summary>
@@ -679,53 +656,7 @@ namespace SwissArmyKnifeForMugen.Displays
         /// <returns></returns>
         private string _GetAttrString(int attr)
         {
-            string str = "";
-            if ((attr & 1) != 0)
-                str += "s";
-            if ((attr & 2) != 0)
-                str += "c";
-            if ((attr & 4) != 0)
-                str += "a";
-            if ((attr & 56) == 56)
-            {
-                str += ",aa";
-            }
-            else
-            {
-                if ((attr & 8) != 0)
-                    str += ",na";
-                if ((attr & 16) != 0)
-                    str += ",sa";
-                if ((attr & 32) != 0)
-                    str += ",ha";
-            }
-            if ((attr & 448) == 448)
-            {
-                str += ",at";
-            }
-            else
-            {
-                if ((attr & 64) != 0)
-                    str += ",nt";
-                if ((attr & 128) != 0)
-                    str += ",st";
-                if ((attr & 256) != 0)
-                    str += ",ht";
-            }
-            if ((attr & 3584) == 3584)
-            {
-                str += ",ap";
-            }
-            else
-            {
-                if ((attr & 512) != 0)
-                    str += ",np";
-                if ((attr & 1024) != 0)
-                    str += ",sp";
-                if ((attr & 2048) != 0)
-                    str += ",hp";
-            }
-            return str;
+            return string.Format("{0:G}", (SysInfo_t.HitAttr)attr).Replace(" ", "");
         }
 
         private void VarForm_Load(object sender, EventArgs e)
@@ -1351,23 +1282,40 @@ namespace SwissArmyKnifeForMugen.Displays
                 Invisible,
             }
 
-            /// <summary>
-            /// HitBy flag enum (same as HitAttr??)
-            /// </summary>
-            public enum HitByFlags
+            [Flags]
+            internal enum HitAttr
             {
-                HITBY_S = 1,
-                HITBY_C = 2,
-                HITBY_A = 4,
-                HITBY_na = 8,
-                HITBY_sa = 16, // 0x00000010
-                HITBY_ha = 32, // 0x00000020
-                HITBY_nt = 64, // 0x00000040
-                HITBY_st = 128, // 0x00000080
-                HITBY_ht = 256, // 0x00000100
-                HITBY_np = 512, // 0x00000200
-                HITBY_sp = 1024, // 0x00000400
-                HITBY_hp = 2048, // 0x00000800
+                S = 1,
+                C = 2,
+                A = 4,
+                SCA = 7,
+                NA = 8,
+                SA = 16,
+                HA = 32,
+                AA = NA | SA | HA,
+                NT = 64,
+                ST = 128,
+                HT = 256,
+                AT = NT | ST | HT,
+                NP = 512,
+                SP = 1024,
+                HP = 2048,
+                AP = NP | SP | HP
+            }
+
+            internal enum StateType
+            {
+                S = 1,
+                C = 2,
+                A = 3,
+                L = 4
+            }
+
+            internal enum MoveType
+            {
+                I = 0,
+                A = 1,
+                H = 2
             }
         }
     }
