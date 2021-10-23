@@ -831,6 +831,7 @@ namespace SwissArmyKnifeForMugen.Displays
             }
             else
             {
+                MugenWindow.MainObj().CaptureWindow();
                 MugenWindow.MainObj().UpdateTitle();
                 watchTimer.Start();
             }

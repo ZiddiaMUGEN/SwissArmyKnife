@@ -63,7 +63,7 @@ namespace SwissArmyKnifeForMugen
         // for DebugColor.CUSTOM, these are the custom RGB values.
         private int[] customDebugColors = new int[] { 256, 256, 256 };
         private const int GWL_STYLE = -16;
-        private const uint WS_CAPTION = 12582912;
+        private const uint WS_CAPTION = 0x00C00000;
         private const uint WS_POPUP = 2147483648;
         private const uint WS_CHILD = 1073741824;
         private const short SWP_NOMOVE = 2;
@@ -141,6 +141,8 @@ namespace SwissArmyKnifeForMugen
         private System.Windows.Forms.Timer activateTimer;
         private uint watchAddr;
         internal uint WatchInitVal { get; set; }
+
+        internal bool isWindowCaptured = false;
 
         private MugenWindow()
         {
@@ -484,20 +486,8 @@ namespace SwissArmyKnifeForMugen
                     }
                 }
                 // capture the Mugen window and force it into our container
-                uint unValue = (uint)((int)MugenWindow.GetWindowLong(this.watcher.GetMugenWindowHandle(), -16) & -12582913 & int.MaxValue);
-                if (this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN10 || this.watcher.MugenVersion == MugenType_t.MUGEN_TYPE_MUGEN11A4)
-                {
-                    int num2 = (int)MugenWindow.SetParent(this.watcher.GetMugenWindowHandle(), this.backgroundBox.Handle);
-                    int num3 = (int)MugenWindow.SetWindowLong(this.watcher.GetMugenWindowHandle(), -16, unValue);
-                    MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, 640, 480, 68);
-                    int num4 = (int)MugenWindow.SetParent(this.watcher.GetMugenWindowHandle(), this.backgroundBox.Handle);
-                }
-                else
-                {
-                    int num2 = (int)MugenWindow.SetWindowLong(this.watcher.GetMugenWindowHandle(), -16, unValue);
-                    int num3 = (int)MugenWindow.SetParent(this.watcher.GetMugenWindowHandle(), this.backgroundBox.Handle);
-                    MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, 640, 480, 68);
-                }
+                this.CaptureWindow();
+
                 // set predetermined flags based on profile setup
                 MugenProfile profile = ProfileManager.MainObj().GetProfile(profileNo);
                 if (profile != null)
@@ -519,6 +509,23 @@ namespace SwissArmyKnifeForMugen
             // failure case
             this.watcher.ResetMugenVersion();
             return false;
+        }
+
+        public void CaptureWindow()
+        {
+            if (!this.isWindowCaptured)
+            {
+                // get window style and bitwise OR to disable captions
+                uint windowStyles = (uint)((int)MugenWindow.GetWindowLong(this.watcher.GetMugenWindowHandle(), GWL_STYLE) & -WS_CAPTION);
+
+                MugenWindow.SetParent(this.watcher.GetMugenWindowHandle(), this.backgroundBox.Handle);
+                MugenWindow.SetWindowLong(this.watcher.GetMugenWindowHandle(), GWL_STYLE, windowStyles);
+                MugenWindow.SetWindowPos(this.watcher.GetMugenWindowHandle(), 0, 0, 0, 640, 480, SWP_SHOWWINDOW | SWP_NOZORDER);
+                MugenWindow.SetParent(this.watcher.GetMugenWindowHandle(), this.backgroundBox.Handle);
+
+                this.isWindowCaptured = true;
+            }
+            
         }
 
         public void AttachMugen() => MugenWindow.AttachThreadInput(MugenWindow.GetWindowThreadProcessId(this.watcher.GetMugenWindowHandle(), IntPtr.Zero), MugenWindow.GetWindowThreadProcessId(this.Handle, IntPtr.Zero), true);
@@ -565,6 +572,7 @@ namespace SwissArmyKnifeForMugen
         /// </summary>
         public void CloseMugen()
         {
+            this.isWindowCaptured = false;
             // stop trigger breakpoint freeze
             this.stopDebugBreak();
             if (this.watcher.GetMugenProcess() != null)
@@ -607,7 +615,7 @@ namespace SwissArmyKnifeForMugen
                                             break;
                                     }
                                     while (hWnd == this.watcher.GetMugenWindowHandle() || lpdwProcessId != this.watcher.GetMugenProcess(isUnsafe: true).Id);
-                                    if (hWnd != IntPtr.Zero && lpdwProcessId == this.watcher.GetMugenProcess().Id)
+                                    if (hWnd != IntPtr.Zero && this.watcher.GetMugenProcess() != null && lpdwProcessId == this.watcher.GetMugenProcess().Id)
                                     {
                                         MugenWindow.PostMessage(hWnd, 273U, (IntPtr)6, (IntPtr)1967936);
                                         this.watcher.KillAndAwaitMugenProcessEnd();
@@ -3059,6 +3067,12 @@ namespace SwissArmyKnifeForMugen
                     // data loading segment?
                     if (this.debugPassInfo.baseAddr == 0U)
                         this.debugPassInfo.baseAddr = (uint)GameUtils.GetBaseAddress(this.watcher);
+                    // check for re-capture
+                    int tmpRoundState = GameUtils.GetRoundState(this.watcher);
+                    if (tmpRoundState == 0)
+                    {
+                        this.isWindowCaptured = false;
+                    }
                     if (this.debugPassInfo.baseAddr != 0U && !GameUtils.IsDemo(this.watcher))
                     {
                         if (this.debugPassInfo.baseAddr != 0U)
