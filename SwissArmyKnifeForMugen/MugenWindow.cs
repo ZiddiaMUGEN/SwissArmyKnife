@@ -2303,7 +2303,7 @@ namespace SwissArmyKnifeForMugen
                 num17 = 0,
                 num18 = 0,
                 num19 = 2,
-                backupNativeEvent = (NativeEvent) null,
+                backupNativeEvent = (NativeEvent) null
             };
         }
 
@@ -2314,8 +2314,6 @@ namespace SwissArmyKnifeForMugen
             DebugForm debugForm = DebugForm.MainObj();
             // backup native event
             this.debugPassInfo.backupNativeEvent = (NativeEvent)null;
-            // used throughout
-            this.debugPassInfo.baseAddr = 0;
             // this is false by default+we set to true if mugen is really active
             this._isMugenActive = false;
             switch (awaitedNativeEvent.m_union.Exception.ExceptionRecord.ExceptionCode)
@@ -2328,7 +2326,7 @@ namespace SwissArmyKnifeForMugen
                     // read current value
                     TriggerDatabase.TriggerValue_t triggerValue = this.GetTriggerValue(this.debugPassInfo.baseAddr);
                     // make sure not empty
-                    if (triggerValue != null && !this.debugPassInfo.triggerValueT.isEqual(triggerValue))
+                    if (triggerValue != null && (this.debugPassInfo.triggerValueT == null || !this.debugPassInfo.triggerValueT.isEqual(triggerValue)))
                     {
                         this.debugPassInfo.triggerValueT = triggerValue;
                         // used for verification, switching first on value type and then on operator.
@@ -2660,6 +2658,18 @@ namespace SwissArmyKnifeForMugen
         // called during event loop when the debug process is set up (polling debug setup)
         public void HandleUnsetDebugProcess()
         {
+        }
+
+        public bool MainLoop()
+        {
+            LogManager logManager = LogManager.MainObj();
+            DebugForm debugForm = DebugForm.MainObj();
+            // setup for standard BPs
+            // just initialize the debug process
+            if (this.watcher.GetDebugProcess() == null && !this.GetIsExperimental() && this._triggerCheckTarget.GetCurrentMode() != TriggerCheckTarget.CheckMode.CHECKMODE_SUSPENDED)
+            {
+                this.watcher.AttachDebugProcess();
+            }
             if (this.watchAddr == 0U)
             {
                 Thread.Sleep(16); // waiting to see if debug process gets set
@@ -2712,12 +2722,6 @@ namespace SwissArmyKnifeForMugen
                     }
                 }
             }
-        }
-
-        public bool MainLoop()
-        {
-            LogManager logManager = LogManager.MainObj();
-            DebugForm debugForm = DebugForm.MainObj();
             // trigger checking for experimental/sw bps (compare value at watchAddr, no hardware bp involved)
             if (this.watchAddr != 0U)
             {
@@ -3391,7 +3395,7 @@ namespace SwissArmyKnifeForMugen
                         }
                         if (this.watcher.GetDebugProcess() != null && this._triggerCheckTarget != null && (this._triggerCheckTarget.IsDirty() && this.watchAddr == 0U))
                         {
-                            this.debugPassInfo.triggerValueT.reset();
+                            if(this.debugPassInfo.triggerValueT != null) this.debugPassInfo.triggerValueT.reset();
                             if (this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_START)
                             {
                                 if (this._SetBreakPoint(this.debugPassInfo.baseAddr))
