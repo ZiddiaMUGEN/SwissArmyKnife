@@ -24,6 +24,7 @@ using System.Threading;
 using System.Windows.Forms;
 using static SwissArmyKnifeForMugen.Triggers.TriggerDatabase;
 using MugenWatcher.Utils;
+using static MugenWatcher.ExternalFuncs;
 
 namespace SwissArmyKnifeForMugen
 {
@@ -143,6 +144,10 @@ namespace SwissArmyKnifeForMugen
         internal uint WatchInitVal { get; set; }
 
         internal bool isWindowCaptured = false;
+
+
+        // win, 1.0, 1.1a4, 1.1b1 -- placed here over MW
+        private uint[] projHitBPAddrs = { 0x00446267, 0x0046FAD0, 0x004407B0, 0x00440CE0 };
 
         private MugenWindow()
         {
@@ -2321,6 +2326,22 @@ namespace SwissArmyKnifeForMugen
                 // these cases correspond to hardware bp?
                 case ExceptionCode.STATUS_WOW64_SINGLESTEP:
                 case ExceptionCode.STATUS_SINGLESTEP:
+                    // check for proj hit breakpoints
+                    if (this.watcher.GetDebugThreadContext().Eip == this.projHitBPAddrs[(int) this.watcher.MugenVersion - 1])
+                    {
+                        // grab player address from CONTEXT object
+                        CONTEXT ctx = this.watcher.GetDebugThreadContext();
+                        uint playerAddr = ctx.Ebp;
+
+                        // add proj to the list
+                        DebugForm.MainObj().ProjectileHit(GameUtils.GetGameTime(this.watcher), PlayerUtils.GetProjHitID(this.watcher, playerAddr), PlayerUtils.GetPlayerId(this.watcher, playerAddr));
+
+                        // skip to next instruction
+                        ctx.Eip += 6;
+                        this.watcher.SetThreadContext(ctx);
+                        this.watcher.ContinueEvent(awaitedNativeEvent, false);
+                        break;
+                    }
                     // check if read value type matches expected type + is in range/matching
                     bool triggerValueValid = false;
                     // read current value
@@ -2672,9 +2693,13 @@ namespace SwissArmyKnifeForMugen
             }
             if (this.watchAddr == 0U)
             {
-                Thread.Sleep(16); // waiting to see if debug process gets set
                 if (this.watcher.GetDebugProcess() != null)
                 {
+                    // handler for ProjHit instruction breakpoint -- goes to slot 1 to avoid conflicts with data BPs
+                    // no support with experimental BPs for now.
+                    if (!this.GetIsExperimental()) this.watcher.SetInstructionBreakpoint(this.projHitBPAddrs[(int)this.watcher.MugenVersion - 1], 1);
+
+                    // handle other BP styles
                     if (this._stopDebugBreakFlag || this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_RESUME || this._triggerCheckTarget.GetNextCommand() == TriggerCheckTarget.CheckCommand.CHECKCMD_STOP)
                     {
                         if (this._triggerCheckTarget.GetNextCommand() != TriggerCheckTarget.CheckCommand.CHECKCMD_STOP && this._triggerCheckTarget.GetCurrentMode() != TriggerCheckTarget.CheckMode.CHECKMODE_STOPPED)

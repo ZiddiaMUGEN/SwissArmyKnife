@@ -10,6 +10,7 @@ using SwissArmyKnifeForMugen.Configs;
 using SwissArmyKnifeForMugen.Triggers;
 using SwissArmyKnifeForMugen.Utils;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Runtime.InteropServices;
@@ -131,6 +132,8 @@ namespace SwissArmyKnifeForMugen.Displays
         private string _triggerValueString;
         private int _blinkCount;
 
+        private Queue<ProjHit> projHitList;
+
         protected override void Dispose(bool disposing)
         {
             if (disposing && this.components != null)
@@ -140,6 +143,8 @@ namespace SwissArmyKnifeForMugen.Displays
 
         private void InitializeComponent()
         {
+            this.projHitList = new Queue<ProjHit>();
+
             this.components = (IContainer)new Container();
             ComponentResourceManager componentResourceManager = new ComponentResourceManager(typeof(DebugForm));
             this.groupBox1 = new GroupBox();
@@ -1052,6 +1057,7 @@ namespace SwissArmyKnifeForMugen.Displays
             }
             if (this.debugModeCheckBox.Checked)
             {
+                this.projHitList.Clear();
                 this.playerListView.ForeColor = Control.DefaultForeColor;
                 this.explodListView.ForeColor = Control.DefaultForeColor;
                 this.projListView.ForeColor = Control.DefaultForeColor;
@@ -3474,6 +3480,29 @@ namespace SwissArmyKnifeForMugen.Displays
 
         private void groupBox2_Enter(object sender, EventArgs e)
         {
+        }
+
+        internal void ProjectileHit(int hittime, int projID, int ownerID)
+        {
+            this.projHitList.Enqueue(new ProjHit()
+            {
+                GametimeRecorded = hittime,
+                ProjID = projID,
+                OwnerID = ownerID
+            });
+
+            // cap the count tracked
+            if (this.projHitList.Count > 50)
+            {
+                this.projHitList.Dequeue();
+            }
+        }
+
+        internal struct ProjHit
+        {
+            internal int GametimeRecorded;
+            internal int ProjID;
+            internal int OwnerID;
         }
     }
 }
